@@ -1,0 +1,82 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# --- 1. Global Settings ---
+add_newline = false
+palette = "tokyonight"
+
+# --- 2. Tokyo Night Palette (Matches your Kitty Config) ---
+[palettes.tokyonight]
+bg_blue = '#7aa2f7'
+bg_selection = '#283457' # Matches your selection_background
+bg_purple = '#bb9af7'
+bg_yellow = '#e0af68'
+fg_dark = '#1a1b26'    # Matches your Kitty background
+fg_light = '#c0caf5'   # Matches your Kitty foreground
+
+# --- 3. The Layout ---
+format = """
+[](bg_blue)\
+$os\
+$username\
+[](bg:bg_selection fg:bg_blue)\
+$directory\
+[](fg:bg_selection bg:bg_purple)\
+$git_branch\
+$git_status\
+[](fg:bg_purple)\
+$fill\
+[](fg:bg_yellow)\
+$time\
+[](bg_yellow)\
+$line_break$character"""
+
+right_format = """$cmd_duration$status"""
+
+# --- 4. Module Configurations ---
+
+[os]
+disabled = false
+style = "bg:bg_blue fg:fg_dark"
+format = "[$symbol]($style)"
+
+[os.symbols]
+Fedora = " "
+
+[username]
+show_always = true
+style_user = "bg:bg_blue fg:fg_dark"
+format = "[$user]($style)"
+
+[directory]
+style = "bg:bg_selection fg:fg_light"
+format = "[ $path ]($style)"
+truncation_length = 3
+substitutions = { "Documents" = "󱔗 ", "Downloads" = " ", "Music" = "󰎆 ", "Pictures" = " ", "projects" = "󱂛 ", "college" = "󰑴 " }
+
+[git_branch]
+symbol = " "
+style = "bg:bg_purple fg:fg_light"
+format = "[ $symbol$branch ]($style)"
+
+[git_status]
+style = "bg:bg_purple fg:fg_light"
+format = '[[($all_status$ahead_behind)]($style)]($style)'
+
+[time]
+disabled = false
+time_format = "%R" 
+style = "bg:bg_yellow fg:fg_dark"
+format = "[ $time ]($style)"
+
+[fill]
+symbol = " "
+
+[character]
+success_symbol = "[➜](bold green)"
+error_symbol = "[➜](bold red)"
+
+[status]
+disabled = false
+symbol = "✘ "
+style = "bold red"
+format = "[$symbol]($style)"

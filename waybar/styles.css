@@ -1,0 +1,84 @@
+* {
+    /* Global reset to strip hidden spacing */
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    
+    font-family: "Symbols Nerd Font Mono", "FontAwesome", "JetBrains Mono", sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+window#waybar {
+    background-color: transparent;
+}
+
+#workspaces, #window, #clock, #cpu, #memory, #bluetooth, #network, #pulseaudio, #battery, #custom-power, #custom-ram {
+    background-color: #1a1b26;
+    color: #c0caf5;
+    padding: 0 10px;
+    
+    /* THE FIX: Use a tiny negative vertical margin. 
+       This allows the 46px-capable icons to sit inside a 34px bar 
+       without the bar expanding to accommodate them. */
+    margin: -1px 2px; 
+    
+    border-radius: 10px;
+    border: 1px solid rgba(187, 154, 247, 0.2);
+    min-height: 0;
+}
+
+/* Force the internal text labels to be as flat as possible */
+label {
+    all: unset;
+    min-height: 0;
+    line-height: 1;
+}
+
+#custom-ram {
+    color: #9b59b6;
+}
+#group-media {
+    background-color: rgba(36, 40, 59, 0.4); /* Transparent Tokyo Night */
+    border-radius: 12px;
+    padding: 0 8px;
+    margin: 0 10px;
+    border: 1px solid rgba(187, 154, 247, 0.2);
+}
+
+#custom-media {
+    font-family: "JetBrains Mono";
+    font-weight: bold;
+    color: #7aa2f7;
+    margin-right: 8px;
+}
+#group-media {
+    background-color: rgba(36, 40, 59, 0.4);
+    border-radius: 12px;
+    padding: 0 5px;
+}
+
+#custom-media, #custom-prev, #custom-playpause, #custom-next {
+    font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font", sans-serif;
+}
+
+#bluetooth { color: #7aa2f7; }
+#cpu { color: #2ecc71; }
+#pulseaudio { color: #f1c40f; }
+#battery { color: #26A65B; }
+#custom-power { color: #f7768e; }
+
+#workspaces button {
+    color: #7aa2f7;
+    padding: 0 5px;
+    min-height: 0;
+    /* Resetting potential GTK button defaults */
+    border: none;
+    background: transparent;
+}
+
+#workspaces button.focused {
+    color: #bb9af7;
+    background-color: rgba(187, 154, 247, 0.1);
+}

@@ -1,0 +1,146 @@
+ input {
+    keyboard { xkb {}; numlock; }
+    touchpad { tap; natural-scroll; }
+    focus-follows-mouse max-scroll-amount="0%"
+}
+
+layout {
+    gaps 16
+    center-focused-column "on-overflow"
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+    default-column-width { proportion 0.5; }
+}
+
+ 
+
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+window-rule {
+    match app-id="kitty" 
+    opacity 0.95
+}
+
+spawn-at-startup "sh" "-c" "killall waybar; waybar"
+
+
+spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"
+
+spawn-at-startup "swayidle" "-w" \
+    "timeout" "300" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5" \
+    "before-sleep" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
+
+
+//spawn-sh-at-startup "swaybg -i /home/sreyas/wall/wallhaven-2yv9rm.jpg -m fill"
+
+
+binds {
+    Mod+D { toggle-overview; }
+    //Mod+D { close-window; }
+    
+    // --- Terminal & Apps ---
+    Mod+Return { spawn "kitty"; }
+    Mod+Space { spawn "fuzzel"; }
+    Mod+B { spawn "firefox"; }
+    Mod+N { spawn "nautilus"; }
+    Mod+Q { close-window; }
+
+    // --- Window Controls ---
+    Mod+F { maximize-column; }
+    Mod+R { switch-preset-column-width; }
+    Mod+V       { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Print { screenshot; }
+
+    // --- Direct Lock Shortcut ---
+    Mod+L { 
+        spawn "swaylock" "--screenshots" "--clock" "--indicator" "--effect-blur" "7x5"
+}
+
+    Mod+Shift+B { spawn "sh" "-c" "killall waybar; waybar"; }
+
+    // Example media keys mapping using playerctl.
+    // This will work with any MPRIS-enabled media player.
+    XF86AudioPlay        allow-when-locked=true { spawn-sh "playerctl play-pause"; }
+    XF86AudioStop        allow-when-locked=true { spawn-sh "playerctl stop"; }
+    XF86AudioPrev        allow-when-locked=true { spawn-sh "playerctl previous"; }
+    XF86AudioNext        allow-when-locked=true { spawn-sh "playerctl next"; }
+
+   
+
+// --- Power Menu (Fuzzel) ---
+Mod+Escape { 
+    spawn "sh" "-c" "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 ;; Suspend) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
+}
+
+
+
+    // --- Wallpaper ---
+    Mod+W { spawn "bash" "/home/sreyas/.config/niri/wallpaper-picker.sh"; }
+    
+    // Mod+Shift+W { spawn "bash" "/home/sreyas/.config/niri/live-wallpaper-picker.sh"; }
+    
+    Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
+    Mod+Ctrl+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }
+    Mod+Ctrl+WheelScrollUp   cooldown-ms=150 { move-column-to-workspace-up; }
+
+    Mod+WheelScrollRight      { focus-column-right; }
+    Mod+WheelScrollLeft       { focus-column-left; }
+    Mod+Ctrl+WheelScrollRight { move-column-right; }
+    Mod+Ctrl+WheelScrollLeft  { move-column-left; }
+
+    // Usually scrolling up and down with Shift in applications results in
+    // horizontal scrolling; these binds replicate that.
+    Mod+Shift+WheelScrollDown      { focus-column-right; }
+    Mod+Shift+WheelScrollUp        { focus-column-left; }
+    Mod+Ctrl+Shift+WheelScrollDown { move-column-right; }
+    Mod+Ctrl+Shift+WheelScrollUp   { move-column-left; }
+
+    // Focus (Move your eyes)
+    Mod+Left  { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    Mod+Up    { focus-workspace-up; }
+    Mod+Down  { focus-workspace-down; }
+
+    // Move (Move the window)
+    Mod+Shift+Left  { move-column-left; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Up    { move-column-to-workspace-up; }
+    Mod+Shift+Down  { move-column-to-workspace-down; }
+    
+    Mod+1     { focus-workspace 1; }
+    Mod+2     { focus-workspace 2; }
+    Mod+3     { focus-workspace 3; }
+    Mod+4     { focus-workspace 4; }
+    Mod+5     { focus-workspace 5; }
+    Mod+6     { focus-workspace 6; }    
+    Mod+7     { focus-workspace 7; }
+    Mod+8     { focus-workspace 8; }
+    Mod+9     { focus-workspace 9; }   
+     
+    // --- Moving Windows to Workspaces ---
+    Mod+Shift+1    { move-column-to-workspace 1; }
+    Mod+Shift+2    { move-column-to-workspace 2; }
+    Mod+Shift+3    { move-column-to-workspace 3; }
+    Mod+Shift+4    { move-column-to-workspace 4; }
+    Mod+Shift+5    { move-column-to-workspace 5; }
+    Mod+Shift+6    { move-column-to-workspace 6; }
+    Mod+Shift+7    { move-column-to-workspace 7; }
+    Mod+Shift+8    { move-column-to-workspace 8; }
+    Mod+Shift+9    { move-column-to-workspace 9; }
+    
+    // --- Audio & Brightness ---
+    XF86AudioRaiseVolume { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86AudioMicMute     allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
+    XF86MonBrightnessUp   { spawn "brightnessctl" "set" "5%+"; }
+    XF86MonBrightnessDown { spawn "brightnessctl" "set" "5%-"; }
+}

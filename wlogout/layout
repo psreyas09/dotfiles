@@ -1,0 +1,1 @@
+[{"label":"lock","action":"swaylock","text":"Lock"},{"label":"logout","action":"niri msg action quit","text":"Logout"},{"label":"shutdown","action":"systemctl poweroff","text":"Shutdown"},{"label":"reboot","action":"systemctl reboot","text":"Reboot"}]
