@@ -90,6 +90,16 @@
             "key": "󰁹 Battery",
             "keyColor": "blue"
         },
+        {
+            "type": "sound",
+            "key": "󰕾 Audio",
+            "keyColor": "magenta"
+        },
+        {
+            "type": "localip",
+            "key": "󰩟 Local IP",
+            "keyColor": "blue"
+        },
         "break",
         {
             "type": "colors",
