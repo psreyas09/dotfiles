@@ -71,9 +71,7 @@ spawn-at-startup "swaync"
 
 //spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"
 
-//spawn-at-startup "swayidle" "-w" \
-//    "timeout" "300" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5" \
-//    "before-sleep" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
+spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5" "before-sleep" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
 
 
 spawn-sh-at-startup "swaybg -i /home/sreyas/wall/0anime4.jpg -m fill"
