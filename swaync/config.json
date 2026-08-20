@@ -15,10 +15,11 @@
   "timeout-critical": 0,
   "fit-to-clear": true,
   "control-center-width": 420,
-  "control-center-height": 640,
+  "control-center-height": 680,
   "notification-visibility": {},
   "widgets": [
     "title",
+    "buttons-grid",
     "dnd",
     "mpris",
     "volume",
@@ -27,9 +28,37 @@
   ],
   "widget-config": {
     "title": {
-      "text": "Notifications",
+      "text": "Control Center",
       "clear-all-button": true,
       "button-text": "Clear All"
+    },
+    "buttons-grid": {
+      "actions": [
+        {
+          "label": "󰄄 Screenshot",
+          "command": "grim -g \"$(slurp)\" - | wl-copy"
+        },
+        {
+          "label": "󰉼 Themes",
+          "command": "bash /home/sreyas/.config/niri/theme-switcher.sh"
+        },
+        {
+          "label": "󰸉 Wallpaper",
+          "command": "bash /home/sreyas/.config/niri/wallpaper-picker.sh"
+        },
+        {
+          "label": "󰂯 Bluetooth",
+          "command": "blueman-manager"
+        },
+        {
+          "label": "󰕾 Audio",
+          "command": "pavucontrol"
+        },
+        {
+          "label": "󰌾 Lock",
+          "command": "swaylock"
+        }
+      ]
     },
     "dnd": {
       "text": "Do Not Disturb"

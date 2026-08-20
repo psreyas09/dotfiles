@@ -30,6 +30,30 @@
   border: 1px solid @border-color;
 }
 
+.widget-buttons-grid {
+  padding: 6px 0;
+  margin: 6px 0;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button {
+  font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font";
+  font-size: 13px;
+  font-weight: bold;
+  background: rgba(40, 40, 40, 0.85);
+  color: @fg-color;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 4px;
+  border: 1px solid @border-color;
+  transition: all 0.2s ease-in-out;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button:hover {
+  background: alpha(@accent-purple, 0.25);
+  border-color: @accent-purple;
+  color: @accent-purple;
+}
+
 .widget-dnd {
   background: rgba(40, 40, 40, 0.85);
   color: @fg-color;
