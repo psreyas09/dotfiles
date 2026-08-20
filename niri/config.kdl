@@ -92,7 +92,7 @@ Mod+Escape {
 }
     Mod+Shift+T { spawn "bash" "/home/sreyas/.config/niri/theme-switcher.sh"; }
     Mod+Shift+N { spawn "swaync-client" "-t" "-sw"; }
-    Mod+Shift+E { spawn "wlogout" "-b" "2"; }
+    Mod+Shift+E { spawn "wlogout" "-b" "3"; }
 
 
     // --- Wallpaper ---

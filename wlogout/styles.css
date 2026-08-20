@@ -1,9 +1,8 @@
-/* Wlogout Theme - Glass Card Aesthetics & Dynamic Palette Integration */
+/* Wlogout Theme - Symbol-Only Glass Matrix */
 @import url("/home/sreyas/.config/waybar/current-theme.css");
 
 * {
-    font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font";
-    font-weight: bold;
+    font-family: sans-serif;
     transition: all 0.2s ease-in-out;
 }
 
@@ -12,31 +11,30 @@ window {
 }
 
 button {
-    color: @fg-color;
     background-color: alpha(@bg-color, 0.85);
     border: 2px solid @border-color;
     border-radius: 20px;
-    margin: 15px;
-    font-size: 15px;
+    margin: 14px;
     background-repeat: no-repeat;
-    background-position: center 35%;
-    background-size: 28%;
+    background-position: center;
+    background-size: 38%;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    outline: none;
 }
 
 button:hover {
     background-color: alpha(@accent-purple, 0.25);
     border-color: @accent-purple;
-    color: @accent-purple;
 }
 
 button:focus {
-    background-color: alpha(@accent-blue, 0.25);
-    border-color: @accent-blue;
+    outline: none;
+    box-shadow: none;
 }
 
 #lock { background-image: image(url("/usr/share/wlogout/icons/lock.png")); }
 #logout { background-image: image(url("/usr/share/wlogout/icons/logout.png")); }
 #suspend { background-image: image(url("/usr/share/wlogout/icons/suspend.png")); }
+#hibernate { background-image: image(url("/usr/share/wlogout/icons/hibernate.png")); }
 #shutdown { background-image: image(url("/usr/share/wlogout/icons/shutdown.png")); }
 #reboot { background-image: image(url("/usr/share/wlogout/icons/reboot.png")); }

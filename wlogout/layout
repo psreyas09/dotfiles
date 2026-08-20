@@ -1,5 +1,6 @@
-{ "label": "lock", "action": "swaylock", "text": "Lock" }
-{ "label": "logout", "action": "niri msg action quit", "text": "Logout" }
-{ "label": "suspend", "action": "swaylock && systemctl suspend", "text": "Suspend" }
-{ "label": "reboot", "action": "systemctl reboot", "text": "Reboot" }
-{ "label": "shutdown", "action": "systemctl poweroff", "text": "Shutdown" }
+{ "label": "lock", "action": "swaylock" }
+{ "label": "logout", "action": "niri msg action quit" }
+{ "label": "suspend", "action": "swaylock && systemctl suspend" }
+{ "label": "hibernate", "action": "systemctl hibernate" }
+{ "label": "reboot", "action": "systemctl reboot" }
+{ "label": "shutdown", "action": "systemctl poweroff" }
