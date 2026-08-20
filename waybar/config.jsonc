@@ -83,9 +83,13 @@
     },
 
     "network": {
-        "format-wifi": " ",
-        "format-disconnected": "⚠",
-        "on-click": "nmgui"
+        "interval": 2,
+        "format-wifi": "  󰕒 {bandwidthUpBits} 󰇚 {bandwidthDownBits}",
+        "format-ethernet": "󰈀  󰕒 {bandwidthUpBits} 󰇚 {bandwidthDownBits}",
+        "format-linked": "󰈀 {ifname} (No IP)",
+        "format-disconnected": "⚠ Disconnected",
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signaldnm} ({signalStrength}%)",
+        "on-click": "nm-connection-editor"
     },
 
     "pulseaudio": {
