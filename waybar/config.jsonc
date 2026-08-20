@@ -5,8 +5,8 @@
     "spacing": 4,
 
     "modules-left": ["niri/workspaces", "niri/window"],
-    "modules-center": ["clock"],
-    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
+    "modules-center": ["clock", "group/media"],
+    "modules-right": ["cpu", "memory", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
 
     "niri/workspaces": {
         "format": "{icon}",
