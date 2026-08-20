@@ -106,21 +106,19 @@
             "critical": 15
         },
         "format": "{icon} {capacity}%",
-        "format-charging": "󰂄 {capacity}%",
+        "format-charging": "⚡ {capacity}%",
         "format-plugged": " {capacity}%",
         "format-alt": "{time} {icon}",
-        "format-icons": ["󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"],
+        "format-icons": ["", "", "", "", ""],
         "tooltip-format": "Power: {capacity}%\nState: {status}\nTime remaining: {time}"
     },
 
     "custom/power": {
-    "format": "⏻ ",
-    "on-click": "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 ;; Suspend) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
-},
+        "format": "⏻ ",
+        "on-click": "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 ;; Suspend) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
+    },
 
-
- 
-"group/media": {
+    "group/media": {
         "orientation": "horizontal",
         "modules": [
             "custom/media",
@@ -139,23 +137,17 @@
     },
 
     "custom/prev": {
-        "format": " ❮ ", 
+        "format": "⏮ ", 
         "on-click": "playerctl previous"
     },
 
     "custom/playpause": {
-        "format": "{icon}",
-        "format-icons": {
-            "Playing": " ⏸ ",
-            "Paused": " ▶ "
-        },
-        "return-type": "json",
-        "exec": "playerctl -a metadata --format '{\"alt\": \"{{status}}\"}' -F",
+        "format": "⏯ ",
         "on-click": "playerctl play-pause"
     },
 
     "custom/next": {
-        "format": " ❯ ",
+        "format": "⏭ ",
         "on-click": "playerctl next"
     }
 }
