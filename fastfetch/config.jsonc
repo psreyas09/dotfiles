@@ -15,6 +15,9 @@
         "color": {
             "keys": "magenta",
             "title": "blue"
+        },
+        "percent": {
+            "type": 3
         }
     },
     "modules": [
@@ -78,7 +81,7 @@
         },
         {
             "type": "disk",
-            "key": "󰋊 Disk",
+            "key": "󰋊 Storage",
             "keyColor": "magenta"
         },
         {
@@ -87,6 +90,9 @@
             "keyColor": "blue"
         },
         "break",
-        "colors"
+        {
+            "type": "colors",
+            "symbol": "circle"
+        }
     ]
 }
