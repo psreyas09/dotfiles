@@ -68,7 +68,8 @@
         "format": "{icon} {volume}%",
         "format-muted": "",
         "format-icons": { "default": ["", "", ""] },
-        "on-click": "pavucontrol"
+        "on-click": "pavucontrol",
+        "on-click-right": "bash ~/.config/waybar/audio-sink-switcher.sh"
     },
 
     "battery": {
