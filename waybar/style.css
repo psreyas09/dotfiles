@@ -1,4 +1,4 @@
-/* Import the dynamically updated theme file */
+/* Waybar Master Style - Dynamic Theme + Universal High-Contrast Glass Containers */
 @import url("current-theme.css");
 
 * {
@@ -12,48 +12,50 @@ window#waybar {
     background: transparent;
 }
 
+/* Universal Glass Pill Containers - Dark Glass ensures 100% visibility on white, light & dark wallpapers */
 #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
-    background-color: alpha(@bg-color, 0.88);
-    color: @fg-color;
+    background-color: rgba(24, 25, 38, 0.88);
+    color: #c0caf5;
     margin: 5px 3px;
     padding: 0px 12px;
     border-radius: 12px;
-    border: 1.5px solid alpha(@border-color, 0.8);
+    border: 1.5px solid rgba(122, 162, 247, 0.6);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
 #workspaces button {
-    color: @comment-color;
+    color: #565f89;
     padding: 0 6px;
     border-radius: 6px;
 }
 
 #workspaces button:hover {
-    color: @fg-color;
-    background-color: alpha(@fg-color, 0.15);
+    color: #c0caf5;
+    background-color: rgba(192, 202, 245, 0.15);
 }
 
 #workspaces button.focused, #workspaces button.active {
-    color: @accent-purple;
-    background-color: alpha(@accent-purple, 0.2);
+    color: #bb9af7;
+    background-color: rgba(187, 154, 247, 0.25);
 }
 
 #window {
-    color: @accent-blue;
+    color: #7aa2f7;
 }
 
 #custom-notification {
-    color: @accent-purple;
+    color: #bb9af7;
 }
 
 #custom-notification:hover {
-    background-color: alpha(@accent-purple, 0.25);
-    border-color: @accent-purple;
+    background-color: rgba(187, 154, 247, 0.25);
+    border-color: #bb9af7;
 }
 
 #custom-power {
     color: #ea6962;
-    background-color: alpha(@bg-color, 0.92);
-    border: 1.5px solid alpha(#ea6962, 0.7);
+    background-color: rgba(24, 25, 38, 0.95);
+    border: 1.5px solid rgba(234, 105, 98, 0.75);
     padding: 0px 14px;
     margin-right: 8px;
 }
@@ -66,22 +68,23 @@ window#waybar {
 }
 
 #group-media {
-    background-color: alpha(@bg-color, 0.88);
-    border: 1.5px solid @accent-purple;
+    background-color: rgba(24, 25, 38, 0.92);
+    border: 1.5px solid #bb9af7;
     padding: 0px 10px;
 }
 
 #custom-media {
-    color: @fg-color;
+    color: #c0caf5;
     font-weight: bold;
     padding: 0 6px;
 }
 
 #custom-prev, #custom-playpause, #custom-next {
-    color: @accent-purple;
+    color: #bb9af7;
     padding: 0 4px;
 }
 
 #custom-prev:hover, #custom-playpause:hover, #custom-next:hover {
-    color: @fg-color;
+    color: #ffffff;
+    background-color: rgba(187, 154, 247, 0.2);
 }
