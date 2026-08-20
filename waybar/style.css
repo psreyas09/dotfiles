@@ -13,40 +13,61 @@ window#waybar {
 }
 
 #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
-    background-color: @bg-color;
+    background-color: alpha(@bg-color, 0.88);
     color: @fg-color;
     margin: 5px 3px;
     padding: 0px 12px;
     border-radius: 12px;
-    border: 1px solid @border-color;
+    border: 1.5px solid alpha(@border-color, 0.8);
 }
 
 #workspaces button {
     color: @comment-color;
-    padding: 0 4px;
+    padding: 0 6px;
     border-radius: 6px;
 }
 
 #workspaces button:hover {
     color: @fg-color;
+    background-color: alpha(@fg-color, 0.15);
 }
 
 #workspaces button.focused, #workspaces button.active {
     color: @accent-purple;
+    background-color: alpha(@accent-purple, 0.2);
 }
 
 #window {
     color: @accent-blue;
 }
 
+#custom-notification {
+    color: @accent-purple;
+}
+
+#custom-notification:hover {
+    background-color: alpha(@accent-purple, 0.25);
+    border-color: @accent-purple;
+}
+
 #custom-power {
-    color: @accent-red;
-    padding-right: 15px;
+    color: #ea6962;
+    background-color: alpha(@bg-color, 0.92);
+    border: 1.5px solid alpha(#ea6962, 0.7);
+    padding: 0px 14px;
+    margin-right: 8px;
+}
+
+#custom-power:hover {
+    color: #ffffff;
+    background-color: #ea6962;
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(234, 105, 98, 0.6);
 }
 
 #group-media {
-    background-color: @bg-color;
-    border: 1px solid @accent-purple;
+    background-color: alpha(@bg-color, 0.88);
+    border: 1.5px solid @accent-purple;
     padding: 0px 10px;
 }
 
