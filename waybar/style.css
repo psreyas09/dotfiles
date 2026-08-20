@@ -2,7 +2,7 @@
 @import url("current-theme.css");
 
 * {
-    font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font", "Font Awesome 6 Free", "Font Awesome 6 Free Solid";
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free", "Font Awesome 6 Free Solid", "JetBrains Mono", sans-serif;
     font-size: 13px;
     font-weight: bold;
     transition: all 0.2s ease-in-out;

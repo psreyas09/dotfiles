@@ -101,6 +101,9 @@
     },
 
     "battery": {
+        "bat": "BAT0",
+        "adapter": "ADP0",
+        "interval": 2,
         "states": {
             "warning": 30,
             "critical": 15
@@ -143,7 +146,8 @@
 
     "custom/playpause": {
         "format": "⏯ ",
-        "on-click": "playerctl play-pause"
+        "on-click": "playerctl play-pause",
+        "tooltip": false
     },
 
     "custom/next": {
