@@ -68,7 +68,8 @@
         {
             "type": "gpu",
             "key": "󰍛 GPU",
-            "keyColor": "magenta"
+            "keyColor": "magenta",
+            "hideType": "integrated"
         },
         {
             "type": "memory",
