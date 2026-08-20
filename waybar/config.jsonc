@@ -84,12 +84,12 @@
 
     "network": {
         "interval": 2,
-        "format-wifi": " 󰕒{bandwidthUpBits} 󰇚{bandwidthDownBits}",
-        "format-ethernet": "󰈀 󰕒{bandwidthUpBits} 󰇚{bandwidthDownBits}",
+        "format-wifi": " {essid}",
+        "format-ethernet": "󰈀 Wired",
         "format-linked": "󰈀 {ifname}",
         "format-disconnected": "⚠ Disconnected",
-        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signaldnm} ({signalStrength}%)",
-        "on-click": "nm-connection-editor"
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signaldnm} ({signalStrength}%)\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
+        "on-click": "nmgui"
     },
 
     "pulseaudio": {
