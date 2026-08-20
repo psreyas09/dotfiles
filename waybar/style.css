@@ -30,19 +30,23 @@ window#waybar {
 
 #workspaces button {
     color: @comment-color;
-    padding: 0 6px;
-    border-radius: 6px;
+    padding: 0 8px;
+    margin: 2px 2px;
+    border-radius: 8px;
+    font-size: 14px;
     box-shadow: none;
 }
 
 #workspaces button:hover {
     color: @fg-color;
     background-color: alpha(@fg-color, 0.15);
+    border-radius: 8px;
 }
 
 #workspaces button.focused, #workspaces button.active {
     color: @accent-purple;
     background-color: alpha(@accent-purple, 0.25);
+    border-radius: 8px;
 }
 
 #window {

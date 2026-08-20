@@ -9,7 +9,15 @@
     "modules-right": ["group/media", "custom/weather", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
 
     "niri/workspaces": {
-        "format": "{index}",
+        "format": "{icon}",
+        "format-icons": {
+            "1": "󰲠",
+            "2": "󰲢",
+            "3": "󰲤",
+            "4": "󰲦",
+            "5": "󰲨",
+            "default": "󰋔"
+        },
         "all-outputs": true
     },
 
