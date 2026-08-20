@@ -57,6 +57,27 @@ window#waybar {
     color: @accent-purple;
 }
 
+#battery.charging {
+    color: #a9b665;
+}
+
+#battery.warning {
+    color: #e78a4e;
+    border-color: alpha(#e78a4e, 0.7);
+}
+
+#battery.critical {
+    color: #ea6962;
+    border-color: alpha(#ea6962, 0.9);
+    animation: blink 1.2s infinite alternate;
+}
+
+@keyframes blink {
+    to {
+        opacity: 0.4;
+    }
+}
+
 #custom-notification:hover {
     background-color: alpha(@accent-purple, 0.25);
     border-color: @accent-purple;
