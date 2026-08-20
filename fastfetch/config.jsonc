@@ -66,13 +66,15 @@
         {
             "type": "cpu",
             "key": "󰻠 CPU",
-            "keyColor": "blue"
+            "keyColor": "blue",
+            "temp": true
         },
         {
             "type": "gpu",
             "key": "󰍛 GPU",
             "keyColor": "magenta",
-            "hideType": "integrated"
+            "hideType": "integrated",
+            "temp": true
         },
         {
             "type": "memory",
