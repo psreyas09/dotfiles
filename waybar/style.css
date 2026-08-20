@@ -1,4 +1,4 @@
-/* Waybar Master Style - Dynamic Theme + Universal High-Contrast Glass Containers */
+/* Waybar Master Style - Flat Glass Aesthetic (No Shadows / No Gradients) */
 @import url("current-theme.css");
 
 * {
@@ -6,13 +6,17 @@
     font-size: 13px;
     font-weight: bold;
     transition: all 0.2s ease-in-out;
+    box-shadow: none;
+    text-shadow: none;
 }
 
 window#waybar {
     background: transparent;
+    border: none;
+    box-shadow: none;
 }
 
-/* Universal Glass Pill Containers - Dark Glass ensures 100% visibility on white, light & dark wallpapers */
+/* Flat Glass Pill Containers */
 #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
     background-color: rgba(24, 25, 38, 0.88);
     color: #c0caf5;
@@ -20,13 +24,15 @@ window#waybar {
     padding: 0px 12px;
     border-radius: 12px;
     border: 1.5px solid rgba(122, 162, 247, 0.6);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+    box-shadow: none;
+    text-shadow: none;
 }
 
 #workspaces button {
     color: #565f89;
     padding: 0 6px;
     border-radius: 6px;
+    box-shadow: none;
 }
 
 #workspaces button:hover {
@@ -58,19 +64,21 @@ window#waybar {
     border: 1.5px solid rgba(234, 105, 98, 0.75);
     padding: 0px 14px;
     margin-right: 8px;
+    box-shadow: none;
 }
 
 #custom-power:hover {
     color: #ffffff;
     background-color: #ea6962;
     border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(234, 105, 98, 0.6);
+    box-shadow: none;
 }
 
 #group-media {
     background-color: rgba(24, 25, 38, 0.92);
     border: 1.5px solid #bb9af7;
     padding: 0px 10px;
+    box-shadow: none;
 }
 
 #custom-media {
