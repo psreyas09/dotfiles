@@ -6,7 +6,7 @@
 
     "modules-left": ["niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
-    "modules-right": ["group/media", "custom/weather", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
+    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
 
     "niri/workspaces": {
         "format": "{icon}",
@@ -84,9 +84,9 @@
 
     "network": {
         "interval": 2,
-        "format-wifi": "  󰕒 {bandwidthUpBits} 󰇚 {bandwidthDownBits}",
-        "format-ethernet": "󰈀  󰕒 {bandwidthUpBits} 󰇚 {bandwidthDownBits}",
-        "format-linked": "󰈀 {ifname} (No IP)",
+        "format-wifi": " 󰕒{bandwidthUpBits} 󰇚{bandwidthDownBits}",
+        "format-ethernet": "󰈀 󰕒{bandwidthUpBits} 󰇚{bandwidthDownBits}",
+        "format-linked": "󰈀 {ifname}",
         "format-disconnected": "⚠ Disconnected",
         "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signaldnm} ({signalStrength}%)",
         "on-click": "nm-connection-editor"

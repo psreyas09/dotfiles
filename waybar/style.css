@@ -17,7 +17,7 @@ window#waybar {
 }
 
 /* Dynamic Glass Pill Containers - Adapts to Wallust wallpaper palette */
-#workspaces, #window, #clock, #custom-weather, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
+#workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
     background-color: alpha(@bg-color, 0.88);
     color: @fg-color;
     margin: 5px 3px;
