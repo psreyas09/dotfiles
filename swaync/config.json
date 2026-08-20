@@ -36,15 +36,15 @@
       "actions": [
         {
           "label": " Screenshot",
-          "command": "grim -g \"$(slurp)\" - | wl-copy"
+          "command": "bash -c 'swaync-client -t -sw 2>/dev/null; sleep 0.2; grim -g \"$(slurp)\" - | wl-copy && notify-send \"Screenshot\" \"Region copied to clipboard!\" -u low'"
         },
         {
           "label": " Themes",
-          "command": "bash /home/sreyas/.config/niri/theme-switcher.sh"
+          "command": "bash -c 'swaync-client -t -sw 2>/dev/null; bash /home/sreyas/.config/niri/theme-switcher.sh'"
         },
         {
           "label": " Wallpaper",
-          "command": "bash /home/sreyas/.config/niri/wallpaper-picker.sh"
+          "command": "bash -c 'swaync-client -t -sw 2>/dev/null; bash /home/sreyas/.config/niri/wallpaper-picker.sh'"
         },
         {
           "label": " Bluetooth",
