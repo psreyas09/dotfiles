@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#c4a7e7"  // Iris
+        inactive-color "#26233a" // Muted
+        width 2
+    }
+}

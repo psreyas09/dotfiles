@@ -1,0 +1,66 @@
+/* Import the dynamically updated theme file */
+@import url("current-theme.css");
+
+* {
+    font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font", "Font Awesome 6 Free", "Font Awesome 6 Free Solid";
+    font-size: 13px;
+    font-weight: bold;
+    transition: all 0.2s ease-in-out;
+}
+
+window#waybar {
+    background: transparent;
+}
+
+#workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
+    background-color: @bg-color;
+    color: @fg-color;
+    margin: 5px 3px;
+    padding: 0px 12px;
+    border-radius: 12px;
+    border: 1px solid @border-color;
+}
+
+#workspaces button {
+    color: @comment-color;
+    padding: 0 4px;
+    border-radius: 6px;
+}
+
+#workspaces button:hover {
+    color: @fg-color;
+}
+
+#workspaces button.focused, #workspaces button.active {
+    color: @accent-purple;
+}
+
+#window {
+    color: @accent-blue;
+}
+
+#custom-power {
+    color: @accent-red;
+    padding-right: 15px;
+}
+
+#group-media {
+    background-color: @bg-color;
+    border: 1px solid @accent-purple;
+    padding: 0px 10px;
+}
+
+#custom-media {
+    color: @fg-color;
+    font-weight: bold;
+    padding: 0 6px;
+}
+
+#custom-prev, #custom-playpause, #custom-next {
+    color: @accent-purple;
+    padding: 0 4px;
+}
+
+#custom-prev:hover, #custom-playpause:hover, #custom-next:hover {
+    color: @fg-color;
+}

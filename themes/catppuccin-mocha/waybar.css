@@ -1,0 +1,7 @@
+@define-color bg-color #1e1e2e;       /* Base */
+@define-color fg-color #cdd6f4;       /* Text */
+@define-color comment-color #6c7086;  /* Overlay0 */
+@define-color accent-purple #cba6f7;  /* Mauve */
+@define-color accent-blue #89b4fa;    /* Blue */
+@define-color accent-red #f38ba8;     /* Red */
+@define-color border-color rgba(203, 166, 247, 0.2);

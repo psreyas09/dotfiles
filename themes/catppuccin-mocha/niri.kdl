@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#cba6f7"  // Catppuccin Mauve
+        inactive-color "#313244" // Catppuccin Surface0
+        width 2
+    }
+}

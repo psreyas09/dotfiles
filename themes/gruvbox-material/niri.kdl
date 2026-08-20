@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#d3869b"  // Gruvbox Aqua/Purple
+        inactive-color "#3c3836" // Dark Grey-Brown
+        width 2
+    }
+}

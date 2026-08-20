@@ -1,0 +1,48 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+add_newline = false
+palette = "tokyonight"
+scan_timeout = 120
+
+[palettes.tokyonight]
+bg_blue = '#7aa2f7'
+bg_selection = '#283457' 
+bg_purple = '#bb9af7'
+bg_yellow = '#e0af68'
+fg_dark = '#1a1b26'    
+fg_light = '#c0caf5'   
+
+format = """
+[](bg_blue)\
+$os\
+$username\
+[](bg:bg_selection fg:bg_blue)\
+$directory\
+[](fg:bg_selection)\
+$line_break$character"""
+
+# DESTROYS THE RESIZE BUG PERMANENTLY
+right_format = """"""
+
+[os]
+disabled = false
+style = "bg:bg_blue fg:fg_dark"
+format = "[$symbol]($style)"
+
+[os.symbols]
+Fedora = " "
+
+[username]
+show_always = true
+style_user = "bg:bg_blue fg:fg_dark"
+format = "[$user]($style)"
+
+[directory]
+style = "bg:bg_selection fg:fg_light"
+format = "[ $path ]($style)"
+truncation_length = 3
+substitutions = { "Documents" = "󱔗 ", "Downloads" = " ", "Music" = "󰎆 ", "Pictures" = " ", "projects" = "󱂛 ", "college" = "󰑴 " }
+
+[character]
+success_symbol = "[➜](bold green) "
+error_symbol = "[➜](bold red) "

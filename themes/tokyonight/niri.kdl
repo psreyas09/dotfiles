@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#7aa2f7"   // Tokyo Night Blue
+        inactive-color "#283457"  // Dark Selection Blue
+        width 2
+    }
+}

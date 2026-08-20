@@ -1,0 +1,79 @@
+/* SwayNotificationCenter Theme - Dynamic Theme Integration */
+@import url("/home/sreyas/.config/waybar/current-theme.css");
+
+* {
+  font-family: sans-serif;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.control-center {
+  background: @bg-color;
+  border: 1px solid @border-color;
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  padding: 16px;
+}
+
+.widget-title {
+  color: @accent-purple;
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.widget-title > button {
+  background: rgba(40, 40, 40, 0.6);
+  color: @fg-color;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid @border-color;
+}
+
+.widget-dnd {
+  background: rgba(40, 40, 40, 0.85);
+  color: @fg-color;
+  border-radius: 12px;
+  margin: 8px 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  border: 1px solid @border-color;
+}
+
+.widget-mpris {
+  background: rgba(40, 40, 40, 0.85);
+  color: @fg-color;
+  border-radius: 14px;
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid @border-color;
+}
+
+.widget-volume, .widget-backlight {
+  background: rgba(40, 40, 40, 0.85);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 6px 0;
+  border: 1px solid @border-color;
+}
+
+.widget-volume label, .widget-backlight label {
+  font-family: "Font Awesome 6 Free Solid", "Font Awesome 6 Free", sans-serif;
+  font-size: 18px;
+  color: @accent-purple;
+  margin-right: 10px;
+}
+
+.notification {
+  background: @bg-color;
+  border: 1px solid @border-color;
+  border-radius: 12px;
+  margin: 8px 0;
+  padding: 12px;
+  font-size: 15px;
+}
+
+.notification-content {
+  color: @fg-color;
+  font-size: 14px;
+}

@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#88c0d0"  // Frost Blue
+        inactive-color "#4c566a" // Polar Night Grey
+        width 2
+    }
+}

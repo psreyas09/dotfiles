@@ -1,0 +1,7 @@
+layout {
+    focus-ring {
+        active-color "#a7c080"  // Everforest Green
+        inactive-color "#333c43" // Comfort Background Accent
+        width 2
+    }
+}

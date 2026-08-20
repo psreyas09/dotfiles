@@ -1,0 +1,7 @@
+@define-color bg-color #1a1b26;       /* Deep Tokyo Night blue-black */
+@define-color fg-color #c0caf5;       /* Light lavender text */
+@define-color comment-color #565f89;  /* Muted dark grey-blue */
+@define-color accent-purple #bb9af7;  /* Bright purple */
+@define-color accent-blue #7aa2f7;    /* Bright sky blue */
+@define-color accent-red #f7768e;     /* Coral red */
+@define-color border-color rgba(187, 154, 247, 0.2);
