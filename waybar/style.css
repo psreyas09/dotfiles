@@ -67,6 +67,10 @@ tooltip label {
     color: @accent-blue;
 }
 
+#clock {
+    color: @accent-purple;
+}
+
 #custom-notification {
     color: @accent-purple;
 }
