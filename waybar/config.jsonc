@@ -88,7 +88,7 @@
         "format-ethernet": "󰈀 Wired",
         "format-linked": "󰈀 {ifname}",
         "format-disconnected": "⚠ Disconnected",
-        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signaldnm} ({signalStrength}%)\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signalStrength}%\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
         "on-click": "nmgui"
     },
 
@@ -113,7 +113,7 @@
         "format-plugged": " {capacity}%",
         "format-alt": "{time} {icon}",
         "format-icons": ["", "", "", "", ""],
-        "tooltip-format": "Power: {capacity}%\nState: {status}\nTime remaining: {time}"
+        "tooltip-format": "Capacity: {capacity}%\nTime remaining: {time}"
     },
 
     "custom/power": {
