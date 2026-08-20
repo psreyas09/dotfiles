@@ -36,7 +36,7 @@
       "actions": [
         {
           "label": " Screenshot",
-          "command": "bash -c 'swaync-client -t -sw 2>/dev/null; sleep 0.2; grim -g \"$(slurp)\" - | wl-copy && notify-send \"Screenshot\" \"Region copied to clipboard!\" -u low'"
+          "command": "bash -c 'swaync-client -t -sw 2>/dev/null; sleep 0.2; niri msg action screenshot'"
         },
         {
           "label": " Themes",
