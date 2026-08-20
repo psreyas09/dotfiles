@@ -1,16 +1,8 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
 add_newline = false
-palette = "tokyonight"
+palette = "current"
 scan_timeout = 120
-
-[palettes.tokyonight]
-bg_blue = '#7aa2f7'
-bg_selection = '#283457' 
-bg_purple = '#bb9af7'
-bg_yellow = '#e0af68'
-fg_dark = '#1a1b26'    
-fg_light = '#c0caf5'   
 
 format = """
 [](bg_blue)\
@@ -18,10 +10,14 @@ $os\
 $username\
 [](bg:bg_selection fg:bg_blue)\
 $directory\
-[](fg:bg_selection)\
+[](bg:bg_purple fg:bg_selection)\
+$git_branch\
+$git_status\
+[](fg:bg_purple)\
+$cmd_duration\
 $line_break$character"""
 
-# DESTROYS THE RESIZE BUG PERMANENTLY
+# Destroys resize bug permanently
 right_format = """"""
 
 [os]
@@ -41,7 +37,21 @@ format = "[$user]($style)"
 style = "bg:bg_selection fg:fg_light"
 format = "[ $path ]($style)"
 truncation_length = 3
-substitutions = { "Documents" = "󱔗 ", "Downloads" = " ", "Music" = "󰎆 ", "Pictures" = " ", "projects" = "󱂛 ", "college" = "󰑴 " }
+substitutions = { "Documents" = "󱔗 ", "Downloads" = " ", "Music" = "󰎆 ", "Pictures" = " ", "projects" = "󱂛 ", "college" = "󰑴 ", "dotfile" = "󰒓 " }
+
+[git_branch]
+symbol = " "
+style = "bg:bg_purple fg:fg_dark"
+format = "[ $symbol$branch ]($style)"
+
+[git_status]
+style = "bg:bg_purple fg:fg_dark"
+format = "[$all_status$ahead_behind ]($style)"
+
+[cmd_duration]
+min_time = 2_000
+style = "bold yellow"
+format = "[ 󱎫 $duration ]($style)"
 
 [character]
 success_symbol = "[➜](bold green) "
