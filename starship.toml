@@ -57,9 +57,9 @@ format = "[ 󱎫 $duration ]($style)"
 success_symbol = "[➜](bold green) "
 error_symbol = "[➜](bold red) "
 [palettes.current]
-bg_blue = '#7daea3'
-bg_selection = '#504945'
-bg_purple = '#d3869b'
-bg_yellow = '#e78a4e'
-fg_dark = '#282828'
-fg_light = '#dfbf8e'
+bg_blue = '#7fbbb3'
+bg_selection = '#3d484d'
+bg_purple = '#d699b6'
+bg_yellow = '#dbbc7f'
+fg_dark = '#2d353b'
+fg_light = '#d3c6aa'
