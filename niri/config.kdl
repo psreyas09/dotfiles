@@ -34,7 +34,6 @@ window-rule {
     match app-id="sxiv"
     match app-id="org.gnome.FileRoller"
     open-floating true
-    default-floating-position center=true
 }
 
 window-rule {
