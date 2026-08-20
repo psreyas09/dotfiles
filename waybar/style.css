@@ -30,6 +30,19 @@ tooltip label {
     color: @fg-color;
 }
 
+calendar {
+    background-color: alpha(@bg-color, 0.95);
+    border: 1.5px solid alpha(@border-color, 0.8);
+    border-radius: 12px;
+    padding: 8px;
+}
+
+calendar label {
+    font-family: "JetBrains Mono", sans-serif;
+    font-size: 13px;
+    color: @fg-color;
+}
+
 /* Dynamic Glass Pill Containers - Adapts to Wallust wallpaper palette */
 #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
     background-color: alpha(@bg-color, 0.88);
