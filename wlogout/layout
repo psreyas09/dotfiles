@@ -1,27 +1,5 @@
-[
-    {
-        "label" : "lock",
-        "action" : "swaylock",
-        "text" : "Lock"
-    },
-    {
-        "label" : "logout",
-        "action" : "niri msg action quit",
-        "text" : "Logout"
-    },
-    {
-        "label" : "suspend",
-        "action" : "swaylock && systemctl suspend",
-        "text" : "Suspend"
-    },
-    {
-        "label" : "reboot",
-        "action" : "systemctl reboot",
-        "text" : "Reboot"
-    },
-    {
-        "label" : "shutdown",
-        "action" : "systemctl poweroff",
-        "text" : "Shutdown"
-    }
-]
+{ "label": "lock", "action": "swaylock", "text": "Lock" }
+{ "label": "logout", "action": "niri msg action quit", "text": "Logout" }
+{ "label": "suspend", "action": "swaylock && systemctl suspend", "text": "Suspend" }
+{ "label": "reboot", "action": "systemctl reboot", "text": "Reboot" }
+{ "label": "shutdown", "action": "systemctl poweroff", "text": "Shutdown" }
