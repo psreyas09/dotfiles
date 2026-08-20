@@ -1,13 +1,13 @@
 // Wallust Auto-Generated Niri Border Colors
 layout {
     focus-ring {
-        active-color "#7F8286"
-        inactive-color "#7DADA3"
+        active-color "#726982"
+        inactive-color "#9E8368"
         width 2
     }
     border {
-        active-color "#BF148E"
-        inactive-color "#444445"
+        active-color "#A54249"
+        inactive-color "#434343"
         width 2
     }
 }
