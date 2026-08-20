@@ -6,7 +6,7 @@
 
     "modules-left": ["niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
-    "modules-right": ["cpu", "memory", "network", "pulseaudio", "group/media", "battery", "custom/notification", "custom/power"],
+    "modules-right": ["group/media", "cpu", "memory", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
 
     "niri/workspaces": {
         "format": "{icon}",
