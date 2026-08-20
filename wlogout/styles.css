@@ -1,17 +1,42 @@
-window { background-color: rgba(12, 12, 15, 0.9); }
-button {
-    color: #FFFFFF;
-    background-color: rgba(30, 30, 46, 0.5);
-    border: 2px solid #7fc8ff;
-    border-radius: 20px;
-    margin: 10px;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: 25%;
+/* Wlogout Theme - Glass Card Aesthetics & Dynamic Palette Integration */
+@import url("/home/sreyas/.config/waybar/current-theme.css");
+
+* {
+    font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font";
+    font-weight: bold;
+    transition: all 0.2s ease-in-out;
 }
-button:hover { background-color: #bb9af7; border-color: #ffffff; }
+
+window {
+    background-color: rgba(18, 18, 24, 0.85);
+}
+
+button {
+    color: @fg-color;
+    background-color: alpha(@bg-color, 0.85);
+    border: 2px solid @border-color;
+    border-radius: 20px;
+    margin: 15px;
+    font-size: 15px;
+    background-repeat: no-repeat;
+    background-position: center 35%;
+    background-size: 28%;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+button:hover {
+    background-color: alpha(@accent-purple, 0.25);
+    border-color: @accent-purple;
+    color: @accent-purple;
+}
+
+button:focus {
+    background-color: alpha(@accent-blue, 0.25);
+    border-color: @accent-blue;
+}
 
 #lock { background-image: image(url("/usr/share/wlogout/icons/lock.png")); }
 #logout { background-image: image(url("/usr/share/wlogout/icons/logout.png")); }
+#suspend { background-image: image(url("/usr/share/wlogout/icons/suspend.png")); }
 #shutdown { background-image: image(url("/usr/share/wlogout/icons/shutdown.png")); }
 #reboot { background-image: image(url("/usr/share/wlogout/icons/reboot.png")); }
