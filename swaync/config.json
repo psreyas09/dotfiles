@@ -35,15 +35,15 @@
     "buttons-grid": {
       "actions": [
         {
-          "label": "📷 Screenshot",
+          "label": "󰹑 Screenshot",
           "command": "grim -g \"$(slurp)\" - | wl-copy"
         },
         {
-          "label": "🎨 Themes",
+          "label": "󰏘 Themes",
           "command": "bash /home/sreyas/.config/niri/theme-switcher.sh"
         },
         {
-          "label": "🖼 Wallpaper",
+          "label": "󰋩 Wallpaper",
           "command": "bash /home/sreyas/.config/niri/wallpaper-picker.sh"
         },
         {
@@ -55,7 +55,7 @@
           "command": "pavucontrol"
         },
         {
-          "label": "🔒 Lock",
+          "label": "󰌾 Lock",
           "command": "swaylock"
         }
       ]
