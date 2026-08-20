@@ -81,8 +81,9 @@
         },
         {
             "type": "disk",
-            "key": "󰋊 Storage",
-            "keyColor": "magenta"
+            "key": "󰋊 Disk",
+            "keyColor": "magenta",
+            "format": "{1} / {2} ({3})"
         },
         {
             "type": "battery",
