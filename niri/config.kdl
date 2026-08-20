@@ -73,9 +73,7 @@ binds {
     Print { screenshot; }
 
     // --- Direct Lock Shortcut ---
-    Mod+L { 
-        spawn "swaylock" "--screenshots" "--clock" "--indicator" "--effect-blur" "7x5"
-}
+    Mod+L { spawn "swaylock"; }
 
     Mod+Shift+B { spawn "sh" "-c" "killall waybar; waybar"; }
 
@@ -90,7 +88,7 @@ binds {
 
 // --- Power Menu (Fuzzel) ---
 Mod+Escape { 
-    spawn "sh" "-c" "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 ;; Suspend) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
+    spawn "sh" "-c" "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock ;; Suspend) swaylock && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
 }
     Mod+Shift+T { spawn "bash" "/home/sreyas/.config/niri/theme-switcher.sh"; }
     Mod+Shift+N { spawn "swaync-client" "-t" "-sw"; }

@@ -1,0 +1,42 @@
+# Swaylock Aesthetic Configuration - Gruvbox Dark / Blur Effect
+daemonize
+ignore-empty-password
+show-failed-attempts
+
+# Background & Blur
+screenshots
+effect-blur=12x6
+effect-vignette=0.3:0.6
+
+# Clock & Date
+clock
+timestr=%H:%M
+datestr=%A, %B %d, %Y
+
+# Unlock Indicator Circle Position & Size
+indicator
+indicator-radius=110
+indicator-thickness=10
+
+# Gruvbox Color Palette Integration
+ring-color=d3869b
+ring-ver-color=7daea3
+ring-wrong-color=ea6962
+ring-clear-color=fabd2f
+
+inside-color=282828c0
+inside-ver-color=282828c0
+inside-wrong-color=282828c0
+inside-clear-color=282828c0
+
+key-hl-color=7daea3
+bs-hl-color=ea6962
+line-color=00000000
+line-ver-color=00000000
+line-wrong-color=00000000
+line-clear-color=00000000
+
+text-color=dfbf8e
+text-ver-color=7daea3
+text-wrong-color=ea6962
+text-clear-color=fabd2f
