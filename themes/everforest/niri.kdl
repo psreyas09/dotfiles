@@ -1,7 +1,13 @@
+// Wallust Auto-Generated Niri Border Colors
 layout {
     focus-ring {
-        active-color "#a7c080"  // Everforest Green
-        inactive-color "#333c43" // Comfort Background Accent
+        active-color "#867772"
+        inactive-color "#ADA89B"
+        width 2
+    }
+    border {
+        active-color "#B92327"
+        inactive-color "#413D3B"
         width 2
     }
 }

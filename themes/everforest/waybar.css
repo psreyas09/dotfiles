@@ -1,7 +1,8 @@
-@define-color bg-color #2d353b;
-@define-color fg-color #d3c6aa;
-@define-color comment-color #859289;
-@define-color accent-purple #d699b6;
-@define-color accent-blue #7fbbb3;
-@define-color accent-red #e67e80;
-@define-color border-color rgba(167, 192, 128, 0.2);
+/* Wallust Auto-Generated Waybar Colors */
+@define-color bg-color #1A1614;
+@define-color fg-color #FFFAED;
+@define-color comment-color #ADA89B;
+@define-color accent-purple #867772;
+@define-color accent-blue #B92327;
+@define-color accent-red #142B2D;
+@define-color border-color #B92327;
