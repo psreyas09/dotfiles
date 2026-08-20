@@ -11,12 +11,12 @@ effect-vignette=0.3:0.6
 # Clock & Date
 clock
 timestr=%H:%M
-datestr=%A, %B %d, %Y
+datestr=%a, %b %d
 
 # Unlock Indicator Circle Position & Size
 indicator
-indicator-radius=110
-indicator-thickness=10
+indicator-radius=135
+indicator-thickness=12
 
 # Gruvbox Color Palette Integration
 ring-color=d3869b
