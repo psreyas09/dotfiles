@@ -16,22 +16,26 @@ layout {
 }
 
 window-rule {
+    geometry-corner-radius 12
+    clip-to-geometry true
+}
+
+window-rule {
     match app-id=r#"google-chrome$"# title="^Picture-in-Picture$"
-    open-floating true
-}
-
-window-rule {
     match app-id=r#"firefox$"# title="^Picture-in-Picture$"
-    open-floating true
-}
-
-window-rule {
     match app-id=r#"zen"# title="^Picture-in-Picture$"
     open-floating true
 }
 
-
-
+window-rule {
+    match app-id="pavucontrol"
+    match app-id="blueman-manager"
+    match app-id="nm-connection-editor"
+    match app-id="sxiv"
+    match app-id="org.gnome.FileRoller"
+    open-floating true
+    default-floating-position center=true
+}
 
 window-rule {
     match app-id="kitty" 
