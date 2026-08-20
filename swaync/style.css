@@ -36,7 +36,7 @@
 }
 
 .widget-buttons-grid > flowbox > flowboxchild > button {
-  font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font";
+  font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", "JetBrains Mono", sans-serif;
   font-size: 13px;
   font-weight: bold;
   background: rgba(40, 40, 40, 0.85);
