@@ -1,134 +1,89 @@
-# dotfiles
+#  Niri Wayland Desktop Dotfiles
 
-My personal dotfiles for a Wayland desktop built around the **[niri](https://github.com/YaLTeR/niri)** scrollable-tiling compositor.
+Personal high-performance, dynamic-themed dotfiles built around the **[Niri](https://github.com/YaLTeR/niri)** scrollable-tiling Wayland compositor on Fedora.
 
-## Overview
+---
 
-| Component | Tool |
+##  Overview
+
+| Component | Tool / Engine |
 |---|---|
-| Compositor | [niri](https://github.com/YaLTeR/niri) |
-| Status bar | [Waybar](https://github.com/Alexays/Waybar) |
-| App launcher | [Fuzzel](https://codeberg.org/dnkl/fuzzel) |
-| Terminal | [Kitty](https://sw.kovidgoyal.net/kitty/) |
-| Shell prompt | [Starship](https://starship.rs/) (Tokyo Night theme) |
-| Screen locker | [swaylock-effects](https://github.com/mortie/swaylock-effects) |
-| Idle manager | [swayidle](https://github.com/swaywm/swayidle) |
-| Live wallpaper | [mpvpaper](https://github.com/GhostNaN/mpvpaper) |
-| Logout menu | [wlogout](https://github.com/ArtsyMacaw/wlogout) |
-| File manager | [Nautilus](https://apps.gnome.org/Nautilus/) |
-| Browser | Firefox |
+| **Compositor** | [Niri](https://github.com/YaLTeR/niri) (Scrollable Tiling Wayland Compositor) |
+| **Theme Engine** | [Wallust v3.5.1](https://codeberg.org/eon/wallust) (Auto-generates GTK, Kitty, Fuzzel & Waybar palettes on wallpaper change) |
+| **Status Bar** | [Waybar](https://github.com/Alexays/Waybar) (Flat glass design, right-click audio sink switcher, `btop` launchers, circle workspaces) |
+| **Notification Center** | [SwayNC](https://github.com/ErikReider/SwayNotificationCenter) (Dynamic glass theme with 6-button quick action grid) |
+| **App Launcher** | [Fuzzel](https://codeberg.org/dnkl/fuzzel) (Glass geometry, 14px rounded borders, Adwaita icon theme) |
+| **Terminal** | [Kitty](https://sw.kovidgoyal.net/kitty/) (Powerline tabs, beam cursor, Kitty graphics protocol survey_corps logo) |
+| **System Fetch** | [Fastfetch](https://github.com/fastfetch-cli/fastfetch) (Attack on Titan Survey Corps logo, CPU/GPU thermal badges, RAM/Disk progress bars) |
+| **Audio Visualizer** | [CAVA](https://github.com/karlstav/cava) (60fps Monstercat smoothing, PipeWire/PulseAudio integration) |
+| **Shell Prompt** | [Starship](https://starship.rs/) (Powerline Git branch/status, execution timer, directory substitutions) |
+| **Screen Locker** | [swaylock-effects](https://github.com/mortie/swaylock-effects) (Screenshot blur, vignette frame, clock ring) |
+| **Power Menu** | [Wlogout](https://github.com/ArtsyMacaw/wlogout) (3x2 symbol-only glass matrix grid) |
+| **Idle Manager** | [swayidle](https://github.com/swaywm/swayidle) (Auto-locks after 5 minutes of inactivity) |
 
-## Structure
+---
 
-```
-dotfiles/
-├── niri/
-│   ├── config.kdl            # Main niri config (input, layout, window rules, autostart)
-│   ├── keybinds.kdl          # Keybind overrides
-│   ├── wallpaper-picker.sh   # Static wallpaper picker script
-│   └── live-wallpaper-picker.sh  # Live wallpaper picker script
-├── waybar/
-│   ├── config.jsonc          # Waybar modules and layout
-│   ├── style.css             # Waybar stylesheet
-│   ├── mediaplayer.sh        # MPRIS media player script
-│   ├── ram_usage.sh          # RAM usage helper
-│   └── scripts/
-│       └── ram.sh            # RAM stats script
-├── wlogout/
-│   ├── layout                # wlogout button layout (lock, logout, shutdown, reboot)
-│   └── styles.css            # wlogout stylesheet
-├── starship.toml             # Starship prompt configuration
-└── starship.bash             # Starship Bash integration script
-```
+## ⌨ Keybindings
 
-## Keybindings
+> **Mod** = Super Key (`⌘` / `Windows`)
 
-> **Mod** = Super key
-
-### Applications
-
+###  Applications & Ricing Controls
 | Keybind | Action |
 |---|---|
-| `Mod + Return` | Open terminal (Kitty) |
-| `Mod + Space` | Open app launcher (Fuzzel) |
-| `Mod + B` | Open browser (Firefox) |
-| `Mod + N` | Open file manager (Nautilus) |
+| `Mod + Return` | Open terminal ([Kitty](file:///home/sreyas/.config/kitty/kitty.conf)) |
+| `Mod + Space` | Open application launcher ([Fuzzel](file:///home/sreyas/.config/fuzzel/fuzzel.ini)) |
+| `Mod + W` | Open dynamic wallpaper picker script |
+| `Mod + Shift + T` | Open desktop theme switcher toast menu |
+| `Mod + Shift + N` | Open SwayNC notification control center |
+| `Mod + Shift + E` | Open Wlogout 3x2 glass power matrix |
+| `Mod + L` | Lock screen immediately ([Swaylock](file:///home/sreyas/.config/swaylock/config)) |
+| `Print` | Interactive region screenshot ([Niri native screenshot engine](file:///home/sreyas/.config/niri/config.kdl)) |
 | `Mod + Q` | Close focused window |
 
-### Window Management
-
+### 🪟 Window Management
 | Keybind | Action |
 |---|---|
 | `Mod + F` | Maximize column |
 | `Mod + R` | Cycle preset column widths (33% / 50% / 67%) |
-| `Mod + V` | Toggle floating |
-| `Mod + Shift+V` | Switch focus between floating and tiling |
-| `Mod + D` | Toggle overview |
-| `Mod + ←/→` | Focus column left/right |
-| `Mod + ↑/↓` | Focus workspace up/down |
-| `Mod + Shift + ←/→` | Move column left/right |
-| `Mod + Shift + ↑/↓` | Move column to workspace up/down |
-| `Mod + 1–9` | Switch to workspace 1–9 |
-| `Mod + Shift + 1–9` | Move column to workspace 1–9 |
+| `Mod + V` | Toggle window floating |
+| `Mod + Shift + V` | Switch focus between floating and tiling windows |
+| `Mod + D` | Toggle desktop overview |
+| `Mod + ← / →` | Focus column left / right |
+| `Mod + ↑ / ↓` | Focus workspace up / down |
+| `Mod + 1–9` | Switch directly to workspace 1–9 |
+| `Mod + Shift + 1–9` | Move focused window to workspace 1–9 |
 
-### System
+---
 
-| Keybind | Action |
+## ⚡ Custom Shell Shortcuts & GitHub Sync
+
+| Command | Action |
 |---|---|
-| `Mod + L` | Lock screen |
-| `Mod + Escape` | Power menu (Lock / Suspend / Logout / Reboot / Shutdown) |
-| `Mod + Shift+B` | Restart Waybar |
-| `Mod + W` | Wallpaper picker |
-| `Print` | Screenshot |
+| `theme` | Open interactive desktop theme preset selector |
+| `wall` | Open wallpaper selector (Static Fuzzel / sxiv) |
+| `fetch` / `sys` | Run Fastfetch Survey Corps system overview |
+| `viz` | Launch CAVA 60fps audio visualizer |
+| `lock` | Lock screen with blurred screenshot |
+| `power` | Open Wlogout 3x2 glass power menu |
+| `rice-update` | One-command dotfiles backup & auto-sync to GitHub (`psreyas09/dotfiles`) |
 
-### Media & Hardware
+---
 
-| Keybind | Action |
-|---|---|
-| `XF86AudioPlay/Stop/Prev/Next` | Media control (playerctl) |
-| `XF86AudioRaiseVolume/LowerVolume/Mute` | Volume control (WirePlumber) |
-| `XF86AudioMicMute` | Toggle microphone mute |
-| `XF86MonBrightnessUp/Down` | Screen brightness (brightnessctl) |
+##  Installation & Usage
 
-## Waybar Modules
-
-The bar sits at the top of the screen and shows:
-
-- **Left:** niri workspaces, active window title
-- **Center:** Clock (12-hour, toggles to date on click)
-- **Right:** Media player controls, CPU, RAM, Bluetooth, Wi-Fi, audio volume, battery, power button
-
-## Starship Prompt
-
-Uses the **Tokyo Night** color palette with a powerline-style layout:
-
-```
- os username  directory  branch status   time 
-```
-
-Right side shows command duration and exit status.
-
-## Installation
-
-1. Clone this repository:
+1. **Clone repository**:
    ```bash
-   git clone https://github.com/psreyas09/dotfiles.git
+   git clone https://github.com/psreyas09/dotfiles.git ~/dotfile
    ```
 
-2. Copy (or symlink) each config to its target location:
-
-   | File/Directory | Target |
-   |---|---|
-   | `niri/` | `~/.config/niri/` |
-   | `waybar/` | `~/.config/waybar/` |
-   | `wlogout/` | `~/.config/wlogout/` |
-   | `starship.toml` | `~/.config/starship.toml` |
-   | `starship.bash` | sourced from `~/.bashrc` |
-
-3. Make scripts executable:
+2. **Sync dotfiles to `~/.config`**:
    ```bash
-   chmod +x niri/wallpaper-picker.sh niri/live-wallpaper-picker.sh
-   chmod +x waybar/mediaplayer.sh waybar/ram_usage.sh waybar/scripts/ram.sh
+   cp -ra ~/dotfile/niri ~/dotfile/waybar ~/dotfile/kitty ~/dotfile/fuzzel ~/dotfile/swaync ~/dotfile/fastfetch ~/dotfile/swaylock ~/dotfile/cava ~/dotfile/wlogout ~/.config/
+   cp ~/dotfile/.bashrc ~/dotfile/.zshrc ~/
    ```
 
-4. Ensure all required tools are installed (see [Overview](#overview)).
+3. **Reload Niri & Waybar**:
+   ```bash
+   niri msg action load-config-file
+   killall waybar && waybar &
+   ```
