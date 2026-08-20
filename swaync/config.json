@@ -16,7 +16,12 @@
   "fit-to-clear": true,
   "control-center-width": 420,
   "control-center-height": 680,
-  "notification-visibility": {},
+  "notification-visibility": {
+    "osd": {
+      "state": "transient",
+      "app-name": "osd"
+    }
+  },
   "widgets": [
     "title",
     "buttons-grid",

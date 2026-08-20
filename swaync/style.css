@@ -101,3 +101,23 @@
   color: @fg-color;
   font-size: 14px;
 }
+
+.notification progressbar {
+  background-color: transparent;
+  border-radius: 8px;
+  min-height: 8px;
+  margin-top: 6px;
+}
+
+.notification progressbar trough {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  min-height: 8px;
+}
+
+.notification progressbar progress {
+  background-color: @accent-purple;
+  border-radius: 8px;
+  min-height: 8px;
+}
+

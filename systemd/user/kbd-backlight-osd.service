@@ -1,0 +1,11 @@
+[Unit]
+Description=Keyboard Backlight OSD Watcher (Native C)
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/home/sreyas/.config/niri/kbd-backlight-watcher
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
