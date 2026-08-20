@@ -93,7 +93,8 @@
         {
             "type": "sound",
             "key": "󰕾 Audio",
-            "keyColor": "magenta"
+            "keyColor": "magenta",
+            "format": "{2}"
         },
         {
             "type": "localip",
