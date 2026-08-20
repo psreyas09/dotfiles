@@ -30,14 +30,17 @@ fi
 # Reload Kitty configurations live
 pkill -USR1 kitty 2>/dev/null
 
-# Cleanly restart Waybar dashboard background instances
+# Cleanly restart Waybar dashboard via Niri IPC
 killall waybar 2>/dev/null
-waybar &
+niri msg action spawn -- waybar 2>/dev/null
 
 # Force Niri to refresh window borders instantly
 niri msg action load-config-file 2>/dev/null
 
 # Hot-reload SwayNotificationCenter theme
 swaync-client -R && swaync-client -rs 2>/dev/null
+
+# Send desktop notification toast feedback
+notify-send "Desktop Theme" "Applied '$CHOSEN_THEME' theme profile!" -u low -i preferences-desktop-theme 2>/dev/null
 
 echo "Theme changed successfully to $CHOSEN_THEME!"
