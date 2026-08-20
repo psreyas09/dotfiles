@@ -54,6 +54,7 @@ window-rule {
     match app-id="nm-connection-editor"
     match app-id="sxiv"
     match app-id="org.gnome.FileRoller"
+    match app-id="system-monitor"
     open-floating true
 }
 

@@ -49,15 +49,18 @@
         "on-click": "bash ~/.config/waybar/weather.sh"
     },
 
-    "cpu": { "format": " {usage}%" },
+    "cpu": { 
+        "format": " {usage}%",
+        "on-click": "kitty --class=system-monitor -e btop"
+    },
 
-   "memory": {
-    "interval": 30,
-    "format": " {percentage}%",
-    "tooltip-format": "{used}GiB / {total}GiB ({percentage}%)",
-    "max-length": 10,
-    "on-click": "kitty -e htop" 
-},
+    "memory": {
+        "interval": 10,
+        "format": " {percentage}%",
+        "tooltip-format": "{used}GiB / {total}GiB ({percentage}%)",
+        "max-length": 10,
+        "on-click": "kitty --class=system-monitor -e btop"
+    },
     
     "bluetooth": {
         "format": " {status}",
