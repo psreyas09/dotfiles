@@ -54,7 +54,9 @@ else
 fi
 
 # 7. Post Initializations & Environment Paths
-afetch
+if [[ $- == *i* ]] && command -v fastfetch &>/dev/null; then
+    fastfetch
+fi
 export PATH="$HOME/.cargo/bin:$PATH"
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH

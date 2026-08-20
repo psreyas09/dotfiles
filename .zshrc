@@ -3,6 +3,11 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # Added by Antigravity CLI installer
 export PATH="/home/sreyas/.local/bin:$PATH"
 
+# --- Terminal Greeting Banner ---
+if [[ $- == *i* ]] && command -v fastfetch &>/dev/null; then
+    fastfetch
+fi
+
 # --- Custom Desktop Ricing Aliases & Sync Functions ---
 alias theme='bash ~/.config/niri/theme-switcher.sh'
 alias wall='bash ~/.config/niri/wallpaper-picker.sh'
