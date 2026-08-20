@@ -50,8 +50,13 @@ elif [ "$TYPE" == "Static (sxiv)" ]; then
     if [ -n "$SELECTED" ]; then
         pkill mpvpaper
         pkill swaybg
-        swaybg -i "$SELECTED" -m fill > /dev/null 2>&1 &
+        if [[ "$SELECTED" != /* ]]; then
+            FULL_PATH="$STATIC_DIR/$SELECTED"
+        else
+            FULL_PATH="$SELECTED"
+        fi
+        swaybg -i "$FULL_PATH" -m fill > /dev/null 2>&1 &
         disown
-        apply_wallust_palette "$SELECTED"
+        apply_wallust_palette "$FULL_PATH"
     fi
 fi
