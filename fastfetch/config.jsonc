@@ -13,8 +13,8 @@
     "display": {
         "separator": " ➜  ",
         "color": {
-            "keys": "magenta", // Matches Kitty color5 (#bb9af7)
-            "title": "blue"    // Matches Kitty color4 (#7aa2f7)
+            "keys": "magenta",
+            "title": "blue"
         }
     },
     "modules": [
@@ -51,16 +51,6 @@
             "keyColor": "magenta"
         },
         {
-            "type": "display",
-            "key": "󰍹 Resolution",
-            "keyColor": "blue"
-        },
-        {
-            "type": "de",
-            "key": "󰖲 DE",
-            "keyColor": "magenta"
-        },
-        {
             "type": "wm",
             "key": "󱂬 WM",
             "keyColor": "blue"
@@ -86,14 +76,19 @@
             "keyColor": "blue"
         },
         {
-            "type": "localip",
-            "key": "󰩟 Local IP",
+            "type": "disk",
+            "key": "󰋊 Disk",
             "keyColor": "magenta"
+        },
+        {
+            "type": "sound",
+            "key": "󰕾 Audio",
+            "keyColor": "blue"
         },
         {
             "type": "battery",
             "key": "󰁹 Battery",
-            "keyColor": "blue"
+            "keyColor": "magenta"
         },
         "break",
         "colors"
