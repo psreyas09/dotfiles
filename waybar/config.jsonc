@@ -50,7 +50,7 @@
     "clock": {
         "format": " {:%I:%M %p}", 
         "format-alt": " {:%A, %B %d, %Y}",
-        "tooltip-format": "<tt><small>{calendar}</small></tt>",
+        "tooltip-format": "<span font='JetBrains Mono 10'><tt>{calendar}</tt></span>",
         "calendar": {
             "mode": "month",
             "mode-mon-col": 3,

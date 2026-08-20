@@ -38,7 +38,7 @@ calendar {
 }
 
 calendar label {
-    font-family: "JetBrains Mono", sans-serif;
+    font-family: "JetBrains Mono", sans-serif !important;
     font-size: 13px;
     color: @fg-color;
 }
@@ -81,6 +81,7 @@ calendar label {
 }
 
 #clock {
+    font-family: "JetBrains Mono", "Symbols Nerd Font", sans-serif;
     color: @accent-purple;
 }
 
