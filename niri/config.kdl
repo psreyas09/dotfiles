@@ -111,8 +111,17 @@ window-rule {
 
 // --- Text Editors, Code Editors, IDEs & Notes (Frosted Glass) ---
 window-rule {
-    match app-id=r#"code|Code|code-oss|VSCodium|vscodium|cursor|Cursor|sublime_text|subl"#
-    match app-id=r#"kate|kwrite|gedit|TextEditor|gnome-text-editor|geany|obsidian|zed|dev\.zed\.Zed|emacs|neovide"#
+    match app-id=r#"code|Code|code-oss|code-url-handler|VSCodium|vscodium|cursor|Cursor|sublime_text|subl"#
+    match app-id=r#"dev\.zed\.Zed|zed|kate|kwrite|gedit|TextEditor|gnome-text-editor|geany|obsidian|emacs|neovide"#
+    match app-id=r#"com\.visualstudio\.code|com\.vscodium\.codium"#
+    opacity 0.92
+}
+
+// --- Communication, Chat & Messaging Hubs (Frosted Glass) ---
+window-rule {
+    match app-id=r#"discord|Discord|com\.discordapp\.Discord|vesktop|dev\.vencord\.Vesktop|webcord|armcord|legcord"#
+    match app-id=r#"rambox|Rambox|com\.rambox\.Rambox|ferdium|org\.ferdium\.Ferdium|franz|station"#
+    match app-id=r#"slack|Slack|com\.slack\.Slack|telegram|org\.telegram\.desktop|signal|org\.signal\.Signal|element|im\.riot\.Riot|whatsapp"#
     opacity 0.92
 }
 
