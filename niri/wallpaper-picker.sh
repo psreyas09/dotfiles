@@ -17,6 +17,30 @@ apply_wallust_palette() {
     fi
 }
 
+# Helper function to apply wallpaper + blurred overview backdrop
+apply_wallpaper() {
+    local img="$1"
+    pkill mpvpaper
+    pkill swaybg
+    pkill swaybg-backdrop
+
+    # 1. Generate high-quality blurred backdrop for Overview
+    mkdir -p "$HOME/.cache"
+    magick "$img" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$HOME/.cache/current_wallpaper_blurred.png" 2>/dev/null || \
+    ffmpeg -y -i "$img" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$HOME/.cache/current_wallpaper_blurred.png" 2>/dev/null
+
+    # 2. Launch blurred backdrop for Overview
+    swaybg-backdrop -i "$HOME/.cache/current_wallpaper_blurred.png" -m fill > /dev/null 2>&1 &
+    disown
+
+    # 3. Launch normal wallpaper for workspaces
+    swaybg -i "$img" -m fill > /dev/null 2>&1 &
+    disown
+
+    # 4. Generate dynamic color palette
+    apply_wallust_palette "$img"
+}
+
 # 1. Ask user for wallpaper type
 TYPE=$(echo -e "Static (fuzzel)\nStatic (sxiv)\nLive (fuzzel)" | fuzzel --dmenu -p "Wallpaper Type: ")
 
@@ -24,12 +48,8 @@ if [ "$TYPE" == "Static (fuzzel)" ]; then
     # STATIC WALLPAPER VIA FUZZEL LOGIC
     SELECTED=$(ls "$STATIC_DIR" | grep -E '\.(jpg|jpeg|png|webp)$' | fuzzel --dmenu -p "Select Wall: ")
     if [ -n "$SELECTED" ]; then
-        pkill mpvpaper
-        pkill swaybg
         FULL_PATH="$STATIC_DIR/$SELECTED"
-        swaybg -i "$FULL_PATH" -m fill > /dev/null 2>&1 &
-        disown
-        apply_wallust_palette "$FULL_PATH"
+        apply_wallpaper "$FULL_PATH"
     fi
 
 elif [ "$TYPE" == "Live (fuzzel)" ]; then
@@ -38,6 +58,7 @@ elif [ "$TYPE" == "Live (fuzzel)" ]; then
     if [ -n "$SELECTED" ]; then
         pkill mpvpaper
         pkill swaybg
+        pkill swaybg-backdrop
         
         # Push black bars off-screen
         mpvpaper -o "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080 --video-zoom=0.15 --video-pan-y=0" "eDP-1" "$LIVE_DIR/$SELECTED" > /dev/null 2>&1 &
@@ -48,15 +69,11 @@ elif [ "$TYPE" == "Static (sxiv)" ]; then
     # STATIC WALLPAPER LOGIC
     SELECTED=$(sxiv -t -o "$STATIC_DIR" | head -n 1)
     if [ -n "$SELECTED" ]; then
-        pkill mpvpaper
-        pkill swaybg
         if [[ "$SELECTED" != /* ]]; then
             FULL_PATH="$STATIC_DIR/$SELECTED"
         else
             FULL_PATH="$SELECTED"
         fi
-        swaybg -i "$FULL_PATH" -m fill > /dev/null 2>&1 &
-        disown
-        apply_wallust_palette "$FULL_PATH"
+        apply_wallpaper "$FULL_PATH"
     fi
 fi

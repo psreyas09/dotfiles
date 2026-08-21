@@ -166,6 +166,11 @@ layer-rule {
     geometry-corner-radius 14
 }
 
+// Place blurred wallpaper in the Overview backdrop
+layer-rule {
+    match namespace="^backdrop$"
+    place-within-backdrop true
+}
 
 spawn-at-startup "lxpolkit"
 
@@ -178,8 +183,7 @@ spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"
 
 spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5" "before-sleep" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
 
-
-spawn-sh-at-startup "swaybg -i /home/sreyas/wall/0anime4.jpg -m fill"
+spawn-sh-at-startup "mkdir -p ~/.cache && (magick /home/sreyas/wall/0anime4.jpg -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 ~/.cache/current_wallpaper_blurred.png 2>/dev/null || true); swaybg-backdrop -i ~/.cache/current_wallpaper_blurred.png -m fill & swaybg -i /home/sreyas/wall/0anime4.jpg -m fill"
 
 
 binds {
