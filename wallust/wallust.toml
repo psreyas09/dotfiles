@@ -1,0 +1,22 @@
+# Wallust v3 Dynamic Color Palette Generator Configuration
+backend = "fastresize"
+color_space = "lab"
+palette = "dark16"
+check_contrast = true
+saturation = 20
+
+[templates.kitty]
+template = "kitty.conf"
+target = "~/.config/kitty/current-theme.conf"
+
+[templates.waybar]
+template = "waybar.css"
+target = "~/.config/waybar/current-theme.css"
+
+[templates.fuzzel]
+template = "fuzzel.ini"
+target = "~/.config/fuzzel/fuzzel.ini"
+
+[templates.niri]
+template = "niri.kdl"
+target = "~/.config/niri/current-theme.kdl"

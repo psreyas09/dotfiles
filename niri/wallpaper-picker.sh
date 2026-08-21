@@ -9,11 +9,11 @@ apply_wallust_palette() {
     local img="$1"
     if command -v wallust &>/dev/null || [ -x "$HOME/.cargo/bin/wallust" ]; then
         WALLUST_CMD=$(command -v wallust || echo "$HOME/.cargo/bin/wallust")
-        "$WALLUST_CMD" run "$img" >/dev/null 2>&1
+        "$WALLUST_CMD" run -b fastresize -k "$img" >/dev/null 2>&1
         pkill -USR1 kitty 2>/dev/null
         killall waybar 2>/dev/null; niri msg action spawn -- waybar 2>/dev/null
         swaync-client -R && swaync-client -rs 2>/dev/null
-        notify-send "Wallust Palette" "Generated dynamic color palette from wallpaper!" -u low -i preferences-desktop-theme 2>/dev/null
+        notify-send "Wallust Palette" "Generated dynamic high-contrast color palette from wallpaper!" -u low -i preferences-desktop-theme 2>/dev/null
     fi
 }
 
