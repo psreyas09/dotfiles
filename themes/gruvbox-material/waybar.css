@@ -1,7 +1,11 @@
 @define-color bg-color #282828;
 @define-color fg-color #dfbf8e;
 @define-color comment-color #928374;
-@define-color accent-purple #d3869b;
-@define-color accent-blue #7daea3;
 @define-color accent-red #ea6962;
-@define-color border-color rgba(211, 134, 155, 0.2);
+@define-color accent-green #a9b665;
+@define-color accent-yellow #d8a657;
+@define-color accent-blue #7daea3;
+@define-color accent-purple #d3869b;
+@define-color accent-cyan #89b482;
+@define-color accent-orange #e78a4e;
+@define-color border-color rgba(211, 134, 155, 0.25);

@@ -1,7 +1,11 @@
-@define-color bg-color #1a1b26;       /* Deep Tokyo Night blue-black */
-@define-color fg-color #c0caf5;       /* Light lavender text */
-@define-color comment-color #565f89;  /* Muted dark grey-blue */
-@define-color accent-purple #bb9af7;  /* Bright purple */
-@define-color accent-blue #7aa2f7;    /* Bright sky blue */
-@define-color accent-red #f7768e;     /* Coral red */
-@define-color border-color rgba(187, 154, 247, 0.2);
+@define-color bg-color #1a1b26;
+@define-color fg-color #c0caf5;
+@define-color comment-color #565f89;
+@define-color accent-red #f7768e;
+@define-color accent-green #9ece6a;
+@define-color accent-yellow #e0af68;
+@define-color accent-blue #7aa2f7;
+@define-color accent-purple #bb9af7;
+@define-color accent-cyan #7dcfff;
+@define-color accent-orange #ff9e64;
+@define-color border-color rgba(187, 154, 247, 0.25);

@@ -2,7 +2,11 @@
 @define-color bg-color {{background}};
 @define-color fg-color {{foreground}};
 @define-color comment-color {{color8}};
-@define-color accent-purple {{color5}};
-@define-color accent-blue {{color4}};
 @define-color accent-red {{color1}};
+@define-color accent-green {{color2}};
+@define-color accent-yellow {{color3}};
+@define-color accent-blue {{color4}};
+@define-color accent-purple {{color5}};
+@define-color accent-cyan {{color6}};
+@define-color accent-orange {{color11}};
 @define-color border-color {{color4}};
