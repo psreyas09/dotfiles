@@ -87,6 +87,11 @@ window-rule {
     opacity 0.88
 }
 
+window-rule {
+    match app-id=r#"org\.gnome\.Nautilus|[Nn]autilus"#
+    opacity 0.90
+}
+
 // Frosted glass blur for desktop layer surfaces (Fuzzel, Waybar, SwayNC)
 layer-rule {
     match namespace="^launcher$"
