@@ -111,6 +111,7 @@ window-rule {
 
 // --- Text Editors, Code Editors, IDEs & Notes (Frosted Glass) ---
 window-rule {
+    match app-id=r#"antigravity|Antigravity|antigravity-url-handler"#
     match app-id=r#"code|Code|code-oss|code-url-handler|VSCodium|vscodium|cursor|Cursor|sublime_text|subl"#
     match app-id=r#"dev\.zed\.Zed|zed|kate|kwrite|gedit|TextEditor|gnome-text-editor|geany|obsidian|emacs|neovide"#
     match app-id=r#"com\.visualstudio\.code|com\.vscodium\.codium"#
@@ -138,13 +139,19 @@ window-rule {
     opacity 0.93
 }
 
-// Frosted glass blur for application launcher overlay (Fuzzel)
+// Application launcher overlay styling (Fuzzel)
 layer-rule {
     match namespace="^launcher$"
 
-    background-effect {
-        blur true
+    shadow {
+        on
+        softness 30
+        spread 5
+        offset x=0 y=5
+        color "#00000060"
     }
+
+    geometry-corner-radius 14
 }
 
 spawn-at-startup "lxpolkit"
