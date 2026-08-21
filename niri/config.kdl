@@ -32,6 +32,18 @@ blur {
     saturation 1.4
 }
 
+overview {
+    zoom 0.5
+    backdrop-color "#120f14"
+
+    workspace-shadow {
+        softness 40
+        spread 10
+        offset x=0 y=10
+        color "#00000080"
+    }
+}
+
 layout {
     gaps 16
     center-focused-column "on-overflow"
@@ -152,6 +164,12 @@ layer-rule {
     }
 
     geometry-corner-radius 14
+}
+
+// Place wallpaper within the backdrop so Overview displays the wallpaper instead of plain grey
+layer-rule {
+    match namespace="^wallpaper$"
+    place-within-backdrop true
 }
 
 spawn-at-startup "lxpolkit"
