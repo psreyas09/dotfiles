@@ -4,9 +4,15 @@
     "height": 34,
     "spacing": 4,
 
-    "modules-left": ["niri/workspaces", "niri/window"],
+    "modules-left": ["custom/launcher", "niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
     "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
+
+    "custom/launcher": {
+        "format": "",
+        "on-click": "fuzzel",
+        "tooltip": false
+    },
 
     "niri/workspaces": {
         "format": "{index}",

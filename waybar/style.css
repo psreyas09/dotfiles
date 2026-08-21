@@ -44,7 +44,7 @@ calendar label {
 }
 
 /* Dynamic Glass Pill Containers - Adapts to Wallust wallpaper palette */
-#workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
+#custom-launcher, #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #pulseaudio, #battery, #custom-notification, #custom-power, #group-media {
     background-color: alpha(@bg-color, 0.88);
     color: @fg-color;
     margin: 5px 2px;
@@ -113,6 +113,23 @@ calendar label {
 #custom-notification:hover {
     background-color: alpha(@accent-purple, 0.25);
     border-color: @accent-purple;
+}
+
+#custom-launcher {
+    color: #51a2da;
+    background-color: alpha(@bg-color, 0.95);
+    border: 1.5px solid alpha(#51a2da, 0.75);
+    padding: 0px 14px;
+    margin-left: 8px;
+    font-size: 15px;
+    box-shadow: none;
+}
+
+#custom-launcher:hover {
+    color: #ffffff;
+    background-color: #51a2da;
+    border-color: #ffffff;
+    box-shadow: none;
 }
 
 #custom-power {
