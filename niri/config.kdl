@@ -25,6 +25,13 @@ animations {
     }
 }
 
+blur {
+    passes 3
+    offset 3.0
+    noise 0.02
+    saturation 1.4
+}
+
 layout {
     gaps 16
     center-focused-column "on-overflow"
@@ -34,11 +41,27 @@ layout {
         proportion 0.66667
     }
     default-column-width { proportion 0.5; }
+
+    shadow {
+        on
+        softness 30
+        spread 5
+        offset x=0 y=5
+        color "#00000060"
+    }
 }
 
 window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
+    draw-border-with-background false
+}
+
+// Universal background blur effect for all semitransparent windows & dialogs
+window-rule {
+    background-effect {
+        blur true
+    }
 }
 
 window-rule {
@@ -56,11 +79,23 @@ window-rule {
     match app-id="org.gnome.FileRoller"
     match app-id="system-monitor"
     open-floating true
+    opacity 0.92
 }
 
 window-rule {
     match app-id="kitty" 
-    opacity 0.95
+    opacity 0.88
+}
+
+// Frosted glass blur for desktop layer surfaces (Fuzzel, Waybar, SwayNC)
+layer-rule {
+    match namespace="^launcher$"
+    match namespace="^waybar$"
+    match namespace="^swaync.*$"
+
+    background-effect {
+        blur true
+    }
 }
 
 spawn-at-startup "lxpolkit"
