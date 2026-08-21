@@ -183,7 +183,6 @@ Mod+Escape {
     XF86MonBrightnessDown allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh brightness-down"; }
     XF86KbdBrightnessUp  allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-up"; }
     XF86KbdBrightnessDown allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-down"; }
-    XF86KbdBrightnessToggle allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-toggle"; }
     XF86KbdLightOnOff    allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-toggle"; }
 }
 
