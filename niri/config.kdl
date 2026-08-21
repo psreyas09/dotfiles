@@ -166,11 +166,6 @@ layer-rule {
     geometry-corner-radius 14
 }
 
-// Place wallpaper within the backdrop so Overview displays the wallpaper instead of plain grey
-layer-rule {
-    match namespace="^wallpaper$"
-    place-within-backdrop true
-}
 
 spawn-at-startup "lxpolkit"
 
