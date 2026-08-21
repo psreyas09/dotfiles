@@ -129,11 +129,9 @@ window-rule {
     opacity 0.93
 }
 
-// Frosted glass blur for desktop layer surfaces (Fuzzel, Waybar, SwayNC)
+// Frosted glass blur for application launcher overlay (Fuzzel)
 layer-rule {
     match namespace="^launcher$"
-    match namespace="^waybar$"
-    match namespace="^swaync.*$"
 
     background-effect {
         blur true
