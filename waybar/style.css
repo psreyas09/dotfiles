@@ -173,24 +173,31 @@ calendar label {
 }
 
 #group-media {
-    background-color: alpha(@bg-color, 0.92);
+    background-color: alpha(@bg-color, 0.96);
     border: 1.5px solid @accent-purple;
     padding: 0px 10px;
-    box-shadow: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 #custom-media {
     color: @fg-color;
     font-weight: bold;
+    font-size: 12.5px;
     padding: 0 6px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 #custom-prev, #custom-playpause, #custom-next {
     color: @accent-purple;
-    padding: 0 4px;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 0 6px;
+    margin: 2px 1px;
+    border-radius: 4px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 #custom-prev:hover, #custom-playpause:hover, #custom-next:hover {
-    color: @fg-color;
-    background-color: alpha(@accent-purple, 0.2);
+    color: @bg-color;
+    background-color: @accent-purple;
 }

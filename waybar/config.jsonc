@@ -142,26 +142,26 @@
     },
 
     "custom/media": {
-        "format": "♪ {text}", 
+        "format": "󰝚 {text}", 
         "return-type": "json",
-        "max-length": 15,
+        "max-length": 22,
         "exec": "$HOME/.config/waybar/mediaplayer.sh",
         "escape": true
     },
 
     "custom/prev": {
-        "format": "⏮ ", 
+        "format": "󰒮", 
         "on-click": "playerctl previous"
     },
 
     "custom/playpause": {
-        "format": "⏯ ",
+        "format": "󰐎",
         "on-click": "playerctl play-pause",
         "tooltip": false
     },
 
     "custom/next": {
-        "format": "⏭ ",
+        "format": "󰒭",
         "on-click": "playerctl next"
     }
 }
