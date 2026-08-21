@@ -51,19 +51,37 @@ layout {
     }
 }
 
+// --- Window Corner Radius & Borders ---
 window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
     draw-border-with-background false
 }
 
-// Universal background blur effect for all semitransparent windows & dialogs
+// --- Universal Background Blur (Dual-Kawase Frosted Glass) ---
 window-rule {
     background-effect {
         blur true
     }
 }
 
+// --- Video Players & Media Viewers (Explicitly 100% OPAQUE - No Translucency) ---
+window-rule {
+    match app-id=r#"mpv|vlc|totem|celluloid|clapper|haruna|smplayer|kodi|stremio|freetube|GnomeMpv"#
+    match title="^Picture-in-Picture$"
+    opacity 1.0
+}
+
+// --- Image Viewers, Graphics, Video Editors & Games (Explicitly 100% OPAQUE) ---
+window-rule {
+    match app-id=r#"sxiv|feh|imv|loupe|eog|gthumb|viewnior|shotwell"#
+    match app-id=r#"gimp|inkscape|krita|blender|kdenlive|shotcut|audacity|darktable|rawtherapee"#
+    match app-id=r#"steam|steamwebhelper|heroic|lutris|retroarch|gamescope|wine|obs"#
+    match app-id=r#"virt-manager|virtualbox|remmina"#
+    opacity 1.0
+}
+
+// --- Floating Popups & Dialogs ---
 window-rule {
     match app-id=r#"google-chrome$"# title="^Picture-in-Picture$"
     match app-id=r#"firefox$"# title="^Picture-in-Picture$"
@@ -73,30 +91,42 @@ window-rule {
 }
 
 window-rule {
-    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome|chromium|brave-browser|librewolf|floorp"#
-    exclude title="^Picture-in-Picture$"
-    opacity 0.93
-}
-
-window-rule {
     match app-id="pavucontrol"
     match app-id="blueman-manager"
     match app-id="nm-connection-editor"
-    match app-id="sxiv"
     match app-id="org.gnome.FileRoller"
     match app-id="system-monitor"
+    match app-id="niri-settings"
+    match app-id="org.gnome.Settings"
+    match app-id="gnome-control-center"
     open-floating true
     opacity 0.92
 }
 
+// --- Terminal (Kitty / Alacritty / Foot / Wezterm) ---
 window-rule {
-    match app-id="kitty" 
+    match app-id=r#"kitty|alacritty|foot|wezterm|gnome-terminal"#
     opacity 0.88
 }
 
+// --- Text Editors, Code Editors, IDEs & Notes (Frosted Glass) ---
 window-rule {
-    match app-id=r#"org\.gnome\.Nautilus|[Nn]autilus"#
+    match app-id=r#"code|Code|code-oss|VSCodium|vscodium|cursor|Cursor|sublime_text|subl"#
+    match app-id=r#"kate|kwrite|gedit|TextEditor|gnome-text-editor|geany|obsidian|zed|dev\.zed\.Zed|emacs|neovide"#
+    opacity 0.92
+}
+
+// --- File Managers (Frosted Glass) ---
+window-rule {
+    match app-id=r#"org\.gnome\.Nautilus|[Nn]autilus|thunar|nemo|dolphin|pcmanfm"#
     opacity 0.90
+}
+
+// --- Web Browsers (Frosted Glass) ---
+window-rule {
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome|chromium|brave-browser|librewolf|floorp"#
+    exclude title="^Picture-in-Picture$"
+    opacity 0.93
 }
 
 // Frosted glass blur for desktop layer surfaces (Fuzzel, Waybar, SwayNC)
