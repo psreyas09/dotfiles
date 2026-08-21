@@ -69,6 +69,13 @@ window-rule {
     match app-id=r#"firefox$"# title="^Picture-in-Picture$"
     match app-id=r#"zen"# title="^Picture-in-Picture$"
     open-floating true
+    opacity 1.0
+}
+
+window-rule {
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome|chromium|brave-browser|librewolf|floorp"#
+    exclude title="^Picture-in-Picture$"
+    opacity 0.93
 }
 
 window-rule {
