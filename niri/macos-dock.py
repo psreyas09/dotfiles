@@ -19,8 +19,9 @@ def enforce_single_instance():
         try:
             with open(PID_FILE, "r") as f:
                 old_pid = int(f.read().strip())
-            os.kill(old_pid, signal.SIGTERM)
-            time.sleep(0.1)
+            if old_pid != os.getpid():
+                os.kill(old_pid, signal.SIGTERM)
+                time.sleep(0.1)
         except (OSError, ValueError):
             pass
     with open(PID_FILE, "w") as f:
@@ -548,6 +549,20 @@ class MacOSDock(Gtk.Window):
                             elif "WindowsChanged" in data:
                                 current_windows = data["WindowsChanged"].get("windows", [])
                                 changed = True
+                            elif "WindowOpenedOrChanged" in data:
+                                w_info = data["WindowOpenedOrChanged"].get("window")
+                                if w_info:
+                                    idx = next((i for i, w in enumerate(current_windows) if w["id"] == w_info["id"]), None)
+                                    if idx is not None:
+                                        current_windows[idx] = w_info
+                                    else:
+                                        current_windows.append(w_info)
+                                    changed = True
+                            elif "WindowClosed" in data:
+                                w_id = data["WindowClosed"].get("id")
+                                if w_id is not None:
+                                    current_windows = [w for w in current_windows if w["id"] != w_id]
+                                    changed = True
                             elif "WindowFocusChanged" in data or "WorkspaceActiveWindowChanged" in data:
                                 changed = True
 
