@@ -849,13 +849,34 @@ class NiriSettingsApp(Gtk.Window):
         about_card = SettingsCard()
         vbox.pack_start(about_card, False, False, 0)
 
+        # Dynamic OS Detection from /etc/os-release
+        os_pretty = "Fedora Linux"
+        os_ver = ""
+        if os.path.exists("/etc/os-release"):
+            try:
+                with open("/etc/os-release", "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("PRETTY_NAME="):
+                            os_pretty = line.split("=", 1)[1].strip('"')
+                        elif line.startswith("VERSION="):
+                            os_ver = line.split("=", 1)[1].strip('"')
+            except Exception:
+                pass
+
         kernel = run_cmd("uname -r")
         cpu = run_cmd("lscpu | grep 'Model name' | cut -d: -f2").strip() or "AMD Ryzen Processor"
         mem = run_cmd("free -h | awk '/^Mem:/ {print $3 \" / \" $2}'")
+        niri_ver = run_cmd("niri --version") or "niri"
+        gpus = run_cmd("lspci | grep -i -E '(vga|3d)' | cut -d: -f3")
+        gpu_lines = [g.strip() for g in gpus.splitlines() if g.strip()]
+        gpu_desc = " • ".join(gpu_lines) if gpu_lines else "AMD Radeon Vega / NVIDIA GeForce"
 
-        about_card.add_row(create_setting_row("fedora-logo-icon", "Operating System", "Fedora Linux (x86_64)", Gtk.Label(label="Fedora 40/41")))
-        about_card.add_row(create_setting_row("preferences-desktop-display", "Window Compositor", "Niri (Scrollable Tiling Wayland Compositor)", Gtk.Label(label="Wayland")))
+        badge_ver = os_ver if os_ver else os_pretty
+        about_card.add_row(create_setting_row("fedora-logo-icon", "Operating System", os_pretty, Gtk.Label(label=badge_ver)))
+        about_card.add_row(create_setting_row("preferences-desktop-display", "Window Compositor", f"{niri_ver} (Scrollable Tiling)", Gtk.Label(label="Wayland")))
         about_card.add_row(create_setting_row("cpu", "Processor (CPU)", cpu, Gtk.Label(label="AMD")))
+        about_card.add_row(create_setting_row("video-display", "Graphics (GPU)", gpu_desc, Gtk.Label(label="Hybrid")))
         about_card.add_row(create_setting_row("drive-harddisk", "Memory (RAM)", f"Used / Total: {mem}", Gtk.Label(label=mem.split('/')[1].strip() if '/' in mem else "")))
         about_card.add_row(create_setting_row("applications-system", "Linux Kernel", f"Kernel release {kernel}", Gtk.Label(label=kernel)))
 
