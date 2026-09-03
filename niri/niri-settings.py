@@ -4,6 +4,7 @@ import sys
 import glob
 import json
 import re
+import shutil
 import subprocess
 import threading
 
@@ -18,6 +19,7 @@ APP_TITLE = "Niri Settings"
 THEME_CSS_PATH = "/home/sreyas/.config/waybar/current-theme.css"
 WALLPAPER_DIR = "/home/sreyas/wall"
 CONFIG_KDL_PATH = "/home/sreyas/.config/niri/config.kdl"
+DOTFILE_KDL_PATH = "/home/sreyas/dotfile/niri/config.kdl"
 CURRENT_WALL_CACHE = "/home/sreyas/.cache/current_wallpaper"
 
 def run_cmd(cmd):
@@ -29,6 +31,14 @@ def run_cmd(cmd):
 
 def async_cmd(cmd):
     threading.Thread(target=lambda: subprocess.run(cmd, shell=True), daemon=True).start()
+
+def sync_kdl_to_dotfile(content):
+    if os.path.exists(DOTFILE_KDL_PATH):
+        try:
+            with open(DOTFILE_KDL_PATH, "w") as f:
+                f.write(content)
+        except Exception:
+            pass
 
 def update_niri_output(output_name="eDP-1", mode=None, scale=None, vrr=None):
     try:
@@ -66,15 +76,148 @@ def update_niri_output(output_name="eDP-1", mode=None, scale=None, vrr=None):
 
         with open(CONFIG_KDL_PATH, "w") as f:
             f.write(new_content)
-
-        dotfile_kdl = "/home/sreyas/dotfile/niri/config.kdl"
-        if os.path.exists(dotfile_kdl):
-            with open(dotfile_kdl, "w") as f:
-                f.write(new_content)
-
+        sync_kdl_to_dotfile(new_content)
         subprocess.run(["niri", "msg", "action", "load-config-file"])
     except Exception as e:
         print(f"Error updating niri output: {e}")
+
+def update_niri_input(tap=None, natural_touchpad=None, dwt=None, accel_touchpad=None, scroll_factor=None, ffm=None):
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            text = f.read()
+
+        if tap is not None:
+            if tap and "tap" not in text:
+                text = text.replace("touchpad {", "touchpad {\n        tap")
+            elif not tap:
+                text = re.sub(r'^\s*tap\s*\n?', '', text, flags=re.MULTILINE)
+
+        if natural_touchpad is not None:
+            if natural_touchpad and "natural-scroll" not in text:
+                text = text.replace("touchpad {", "touchpad {\n        natural-scroll")
+            elif not natural_touchpad:
+                text = re.sub(r'^\s*natural-scroll\s*\n?', '', text, flags=re.MULTILINE)
+
+        if dwt is not None:
+            if dwt and "dwt" not in text:
+                text = text.replace("touchpad {", "touchpad {\n        dwt")
+            elif not dwt:
+                text = re.sub(r'^\s*dwt\s*\n?', '', text, flags=re.MULTILINE)
+
+        if accel_touchpad is not None:
+            if re.search(r'accel-speed\s+[\d.-]+', text):
+                text = re.sub(r'accel-speed\s+[\d.-]+', f'accel-speed {accel_touchpad:.1f}', text)
+            else:
+                text = text.replace("touchpad {", f"touchpad {{\n        accel-speed {accel_touchpad:.1f}")
+
+        if scroll_factor is not None:
+            if re.search(r'scroll-factor\s+[\d.-]+', text):
+                text = re.sub(r'scroll-factor\s+[\d.-]+', f'scroll-factor {scroll_factor:.1f}', text)
+            else:
+                text = text.replace("touchpad {", f"touchpad {{\n        scroll-factor {scroll_factor:.1f}")
+
+        if ffm is not None:
+            if ffm and "focus-follows-mouse" not in text:
+                text = text.replace("input {", "input {\n    focus-follows-mouse max-scroll-amount=\"0%\"")
+            elif not ffm:
+                text = re.sub(r'^\s*focus-follows-mouse[^\n]*\n?', '', text, flags=re.MULTILINE)
+
+        with open(CONFIG_KDL_PATH, "w") as f:
+            f.write(text)
+        sync_kdl_to_dotfile(text)
+        subprocess.run(["niri", "msg", "action", "load-config-file"])
+    except Exception as e:
+        print(f"Error updating input: {e}")
+
+def update_niri_layout(gaps=None, border_width=None):
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            text = f.read()
+
+        if gaps is not None:
+            text = re.sub(r'gaps\s+\d+', f'gaps {int(gaps)}', text)
+
+        if border_width is not None:
+            text = re.sub(r'width\s+\d+;', f'width {int(border_width)};', text)
+
+        with open(CONFIG_KDL_PATH, "w") as f:
+            f.write(text)
+        sync_kdl_to_dotfile(text)
+        subprocess.run(["niri", "msg", "action", "load-config-file"])
+    except Exception as e:
+        print(f"Error updating layout: {e}")
+
+def get_niri_input_state():
+    state = {
+        "tap": True,
+        "natural_touchpad": True,
+        "dwt": True,
+        "accel_touchpad": 0.2,
+        "scroll_factor": 1.0,
+        "ffm": True,
+        "gaps": 16,
+        "border_width": 2
+    }
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            content = f.read()
+        state["tap"] = "tap" in content
+        state["natural_touchpad"] = "natural-scroll" in content
+        state["dwt"] = "dwt" in content
+        m = re.search(r'accel-speed\s+([\d.-]+)', content)
+        if m: state["accel_touchpad"] = float(m.group(1))
+        m = re.search(r'scroll-factor\s+([\d.-]+)', content)
+        if m: state["scroll_factor"] = float(m.group(1))
+        state["ffm"] = "focus-follows-mouse" in content
+        m = re.search(r'gaps\s+(\d+)', content)
+        if m: state["gaps"] = int(m.group(1))
+        m = re.search(r'width\s+(\d+);', content)
+        if m: state["border_width"] = int(m.group(1))
+    except Exception:
+        pass
+    return state
+
+def get_audio_devices():
+    try:
+        res = subprocess.run(["wpctl", "status"], capture_output=True, text=True, timeout=2)
+        lines = res.stdout.splitlines()
+        sinks = []
+        sources = []
+        current_section = None
+        for line in lines:
+            if "Sinks:" in line:
+                current_section = "sinks"
+                continue
+            elif "Sources:" in line:
+                current_section = "sources"
+                continue
+            elif "Filters:" in line or "Streams:" in line or "Video" in line:
+                current_section = None
+                continue
+            if current_section:
+                m = re.search(r'([* ])\s*(\d+)\.\s+(.*?)(?:\s+\[vol:|\s*$)', line)
+                if m:
+                    is_def = m.group(1) == '*'
+                    dev_id = m.group(2)
+                    dev_name = m.group(3).strip()
+                    if current_section == "sinks":
+                        sinks.append({"id": dev_id, "name": dev_name, "default": is_def})
+                    elif current_section == "sources":
+                        sources.append({"id": dev_id, "name": dev_name, "default": is_def})
+        return sinks, sources
+    except Exception:
+        return [], []
+
+def get_power_profile():
+    try:
+        res = subprocess.run("busctl get-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles ActiveProfile", shell=True, capture_output=True, text=True)
+        m = re.search(r'\"([^\"]+)\"', res.stdout)
+        return m.group(1) if m else "balanced"
+    except Exception:
+        return "balanced"
+
+def set_power_profile(profile):
+    async_cmd(f'busctl set-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles ActiveProfile s "{profile}"')
 
 
 class SettingsCard(Gtk.Box):
@@ -96,7 +239,6 @@ def create_setting_row(icon_name, title, subtitle="", control_widget=None):
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
     row.set_name("settings-row")
 
-    # Icon badge
     if icon_name:
         theme = Gtk.IconTheme.get_default()
         icon_box = Gtk.Box()
@@ -108,7 +250,6 @@ def create_setting_row(icon_name, title, subtitle="", control_widget=None):
         icon_box.pack_start(img, True, True, 0)
         row.pack_start(icon_box, False, False, 0)
 
-    # Title & Subtitle
     text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
     text_box.set_valign(Gtk.Align.CENTER)
     title_lbl = Gtk.Label(label=title)
@@ -121,12 +262,11 @@ def create_setting_row(icon_name, title, subtitle="", control_widget=None):
         sub_lbl.set_name("row-subtitle")
         sub_lbl.set_xalign(0)
         sub_lbl.set_line_wrap(True)
-        sub_lbl.set_max_width_chars(45)
+        sub_lbl.set_max_width_chars(46)
         text_box.pack_start(sub_lbl, False, False, 0)
 
     row.pack_start(text_box, True, True, 0)
 
-    # Right control widget
     if control_widget:
         control_widget.set_valign(Gtk.Align.CENTER)
         row.pack_end(control_widget, False, False, 0)
@@ -137,12 +277,10 @@ def create_setting_row(icon_name, title, subtitle="", control_widget=None):
 class NiriSettingsApp(Gtk.Window):
     def __init__(self):
         super().__init__(title=APP_TITLE)
-        self.set_default_size(940, 640)
+        self.set_default_size(980, 680)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self.apply_css()
-
-        # Main Layout: HeaderBar + (Sidebar + Content Stack)
         self.setup_headerbar()
 
         main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
@@ -156,7 +294,7 @@ class NiriSettingsApp(Gtk.Window):
 
         sidebar_scroll = Gtk.ScrolledWindow()
         sidebar_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        sidebar_scroll.set_size_request(230, -1)
+        sidebar_scroll.set_size_request(240, -1)
         sidebar_scroll.add(self.sidebar_list)
         main_box.pack_start(sidebar_scroll, False, False, 0)
 
@@ -168,27 +306,28 @@ class NiriSettingsApp(Gtk.Window):
         # Right Content Pages Stack
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(150)
+        self.stack.set_transition_duration(140)
         main_box.pack_start(self.stack, True, True, 0)
 
-        # Page Caching & Lazy Loading
+        # Lazy Loading Page Factories
         self.pages_built = {}
         self.page_factories = {
             "display": self.page_display,
             "appearance": self.page_appearance,
             "dock": self.page_dock,
+            "mouse": self.page_mouse,
+            "keyboard": self.page_keyboard,
             "sound": self.page_sound,
             "network": self.page_network,
-            "keyboard": self.page_keyboard,
+            "notifications": self.page_notifications,
+            "defaults": self.page_defaults,
             "power": self.page_power,
+            "storage": self.page_storage,
             "shortcuts": self.page_shortcuts,
             "about": self.page_about,
         }
 
-        # Build Sidebar Navigation
         self.build_sidebar()
-
-        # Build ONLY the initial page so startup takes < 50ms!
         self.load_page("display")
         first_row = self.sidebar_list.get_row_at_index(0)
         if first_row:
@@ -198,12 +337,11 @@ class NiriSettingsApp(Gtk.Window):
         hb = Gtk.HeaderBar()
         hb.set_show_close_button(True)
         hb.set_title(APP_TITLE)
-        hb.set_subtitle("Niri Wayland Desktop")
+        hb.set_subtitle("Desktop Control Center")
         self.set_titlebar(hb)
 
-        # Reload / Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_tooltip_text("Refresh Live Settings")
+        refresh_btn.set_tooltip_text("Reload Live Settings")
         refresh_btn.set_image(Gtk.Image.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON))
         refresh_btn.connect("clicked", lambda *_: self.reload_all_state())
         hb.pack_end(refresh_btn)
@@ -234,11 +372,15 @@ class NiriSettingsApp(Gtk.Window):
     def build_sidebar(self):
         self.add_nav_item("display", "Display & Monitor", "video-display")
         self.add_nav_item("appearance", "Appearance & Themes", "preferences-desktop-theme")
-        self.add_nav_item("dock", "Dock & Switcher", "user-desktop")
+        self.add_nav_item("dock", "Dock & Top Bar", "user-desktop")
+        self.add_nav_item("mouse", "Mouse & Touchpad", "input-mouse")
+        self.add_nav_item("keyboard", "Keyboard & Brightness", "input-keyboard")
         self.add_nav_item("sound", "Sound & Audio", "audio-volume-high")
         self.add_nav_item("network", "Wi-Fi & Bluetooth", "network-wireless")
-        self.add_nav_item("keyboard", "Keyboard & Brightness", "input-keyboard")
-        self.add_nav_item("power", "Power & Screen Lock", "system-lock-screen")
+        self.add_nav_item("notifications", "Notifications & DND", "preferences-system-notifications")
+        self.add_nav_item("defaults", "Default Applications", "preferences-desktop-default-applications")
+        self.add_nav_item("power", "Power & Performance", "system-lock-screen")
+        self.add_nav_item("storage", "Storage & Maintenance", "drive-harddisk")
         self.add_nav_item("shortcuts", "Shortcuts Reference", "preferences-desktop-keyboard-shortcuts")
         self.add_nav_item("about", "About System", "dialog-information")
 
@@ -262,63 +404,58 @@ class NiriSettingsApp(Gtk.Window):
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        vbox.set_name("page-content")
-        vbox.set_margin_top(20)
-        vbox.set_margin_bottom(24)
-        vbox.set_margin_start(28)
-        vbox.set_margin_end(28)
-        scroll.add(vbox)
+        vbox.set_margin_top(22)
+        vbox.set_margin_bottom(28)
+        vbox.set_margin_start(30)
+        vbox.set_margin_end(30)
 
-        # Section Header
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        header_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         title_lbl = Gtk.Label(label=title)
         title_lbl.set_name("page-title")
         title_lbl.set_xalign(0)
-        title_box.pack_start(title_lbl, False, False, 0)
+        header_vbox.pack_start(title_lbl, False, False, 0)
 
         if description:
             desc_lbl = Gtk.Label(label=description)
             desc_lbl.set_name("page-description")
             desc_lbl.set_xalign(0)
-            title_box.pack_start(desc_lbl, False, False, 0)
+            header_vbox.pack_start(desc_lbl, False, False, 0)
 
-        vbox.pack_start(title_box, False, False, 0)
+        vbox.pack_start(header_vbox, False, False, 0)
+        scroll.add(vbox)
         return scroll, vbox
 
     # ==========================================
     # PAGE 1: DISPLAY & MONITOR
     # ==========================================
     def page_display(self):
-        scroll, vbox = self.make_page_container("Display & Monitor", "Configure monitor refresh rate, resolution and scaling")
+        scroll, vbox = self.make_page_container("Display & Monitor", "Panel resolution, refresh rate, desktop scale, and adaptive sync")
 
-        # Monitor Info Card
         info_card = SettingsCard()
         vbox.pack_start(info_card, False, False, 0)
 
-        # Fetch outputs live from Niri
-        raw = run_cmd("niri msg -j outputs")
         output_data = {}
         try:
-            output_data = json.loads(raw).get("eDP-1", {})
+            res = subprocess.run(["niri", "msg", "-j", "outputs"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                output_data = data.get("eDP-1", {})
         except Exception:
             pass
 
-        model = output_data.get("model", "AU Optronics eDP-1")
         phys = output_data.get("physical_size", [340, 190])
         diag = round(((phys[0]**2 + phys[1]**2)**0.5) / 25.4, 1)
 
         info_card.add_row(create_setting_row(
             "video-display",
-            "Internal Display",
-            f"AU Optronics • {diag}\" 16:9 • eDP-1",
-            Gtk.Label(label="Primary Display")
+            "Internal Display Panel",
+            f"AU Optronics • {diag}\" 16:9 • eDP-1 (Primary Display)",
+            Gtk.Label(label="1920x1080 Native")
         ))
 
-        # Refresh Rate & Resolution Card
         mode_card = SettingsCard()
         vbox.pack_start(mode_card, False, False, 0)
 
-        # Refresh Rate
         modes = output_data.get("modes", [])
         rates = sorted(list(set(round(m.get("refresh_rate", 120213) / 1000, 2) for m in modes)), reverse=True)
         if not rates:
@@ -328,35 +465,22 @@ class NiriSettingsApp(Gtk.Window):
         for r in rates:
             rate_combo.append(str(r), f"{r} Hz (Native Timing)")
         rate_combo.set_active_id(str(rates[0]))
-
-        def on_rate_changed(combo):
-            val = combo.get_active_id()
-            if val:
-                update_niri_output("eDP-1", mode=f"1920x1080@{val}")
-
-        rate_combo.connect("changed", on_rate_changed)
+        rate_combo.connect("changed", lambda c: update_niri_output("eDP-1", mode=f"1920x1080@{c.get_active_id()}"))
 
         mode_card.add_row(create_setting_row(
             "preferences-desktop-display",
             "Display Refresh Rate",
-            f"Hardware panel timing is {rates[0]} Hz. Use VRR below for dynamic 60-120Hz power saving.",
+            f"Hardware panel timing is locked to {rates[0]} Hz. Use VRR below for dynamic 60-120Hz power saving.",
             rate_combo
         ))
 
-        # Display Scale
         cur_scale = str(output_data.get("logical", {}).get("scale", 1.0))
         scale_combo = Gtk.ComboBoxText()
         scale_combo.append("1.0", "100% (Native 1.0x)")
         scale_combo.append("1.25", "125% (Comfortable 1.25x)")
         scale_combo.append("1.5", "150% (High DPI 1.5x)")
         scale_combo.set_active_id(cur_scale if cur_scale in ["1.0", "1.25", "1.5"] else "1.0")
-
-        def on_scale_changed(combo):
-            val = combo.get_active_id()
-            if val:
-                update_niri_output("eDP-1", scale=val)
-
-        scale_combo.connect("changed", on_scale_changed)
+        scale_combo.connect("changed", lambda c: update_niri_output("eDP-1", scale=c.get_active_id()))
 
         mode_card.add_row(create_setting_row(
             "zoom-fit-best",
@@ -365,15 +489,9 @@ class NiriSettingsApp(Gtk.Window):
             scale_combo
         ))
 
-        # VRR / Adaptive Sync (AMD FreeSync)
         vrr_switch = Gtk.Switch()
         vrr_switch.set_active(output_data.get("vrr_enabled", False))
-
-        def on_vrr_toggled(sw, state):
-            update_niri_output("eDP-1", vrr=state)
-            return False
-
-        vrr_switch.connect("state-set", on_vrr_toggled)
+        vrr_switch.connect("state-set", lambda _, state: (update_niri_output("eDP-1", vrr=state), False)[1])
 
         mode_card.add_row(create_setting_row(
             "applications-games",
@@ -388,7 +506,7 @@ class NiriSettingsApp(Gtk.Window):
     # PAGE 2: APPEARANCE & THEMES
     # ==========================================
     def page_appearance(self):
-        scroll, vbox = self.make_page_container("Appearance & Wallpapers", "Personalize desktop wallpapers, dynamic Wallust palette, and themes")
+        scroll, vbox = self.make_page_container("Appearance & Themes", "Personalize desktop wallpapers, dynamic Wallust palette, GTK themes, and window layout")
 
         # Current Wallpaper Card with Thumbnail
         wall_card = SettingsCard()
@@ -398,20 +516,22 @@ class NiriSettingsApp(Gtk.Window):
         if os.path.exists(CURRENT_WALL_CACHE):
             try:
                 with open(CURRENT_WALL_CACHE, "r") as f:
-                    w = f.read().strip()
-                    if os.path.exists(w):
-                        cur_wall = w
+                    c = f.read().strip()
+                    if os.path.exists(c):
+                        cur_wall = c
             except Exception:
                 pass
 
-        thumb_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        thumb_box.set_name("settings-row")
+        thumb_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        thumb_box.set_margin_start(16)
+        thumb_box.set_margin_end(16)
+        thumb_box.set_margin_top(12)
+        thumb_box.set_margin_bottom(12)
 
-        # Load wallpaper preview
         try:
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(cur_wall, 140, 80, False)
-            wall_img = Gtk.Image.new_from_pixbuf(pb)
-            wall_img.set_name("wallpaper-thumb")
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(cur_wall, 160, 90, False)
+            wall_img = Gtk.Image.new_from_pixbuf(pixbuf)
+            wall_img.set_name("wall-preview-img")
             thumb_box.pack_start(wall_img, False, False, 0)
         except Exception:
             pass
@@ -433,12 +553,10 @@ class NiriSettingsApp(Gtk.Window):
         pick_btn.set_valign(Gtk.Align.CENTER)
         pick_btn.connect("clicked", lambda *_: async_cmd("/home/sreyas/.config/niri/wallpaper-picker.sh"))
         thumb_box.pack_end(pick_btn, False, False, 0)
-
         wall_card.pack_start(thumb_box, False, False, 0)
 
-        # Quick Wallpaper Gallery (Thumbnails)
+        # Quick Wallpaper Gallery
         vbox.pack_start(Gtk.Label(label="QUICK WALLPAPER PALETTES", xalign=0, name="section-caption"), False, False, 0)
-
         wall_flow = Gtk.FlowBox()
         wall_flow.set_valign(Gtk.Align.START)
         wall_flow.set_max_children_per_line(4)
@@ -463,7 +581,7 @@ class NiriSettingsApp(Gtk.Window):
                     pass
         threading.Thread(target=load_gallery_bg, daemon=True).start()
 
-        # Desktop Theme Presets
+        # Desktop Theme Profiles
         vbox.pack_start(Gtk.Label(label="DESKTOP THEME PROFILES", xalign=0, name="section-caption"), False, False, 0)
         theme_card = SettingsCard()
         vbox.pack_start(theme_card, False, False, 0)
@@ -475,17 +593,111 @@ class NiriSettingsApp(Gtk.Window):
             theme_card.add_row(create_setting_row(
                 "preferences-desktop-theme",
                 t.replace("-", " ").title(),
-                f"Full palette sync: Waybar, Kitty, Fuzzel & SwayNC",
+                "Full palette sync: Waybar, Kitty, Fuzzel & SwayNC",
                 t_btn
             ))
+
+        # System GTK & UI Styling Card
+        vbox.pack_start(Gtk.Label(label="SYSTEM GTK & WINDOW STYLING", xalign=0, name="section-caption"), False, False, 0)
+        style_card = SettingsCard()
+        vbox.pack_start(style_card, False, False, 0)
+
+        # Dark Mode Preference
+        cur_color_scheme = run_cmd("gsettings get org.gnome.desktop.interface color-scheme")
+        dark_switch = Gtk.Switch()
+        dark_switch.set_active("prefer-dark" in cur_color_scheme)
+        def on_dark_toggled(sw, state):
+            val = "prefer-dark" if state else "prefer-light"
+            async_cmd(f"gsettings set org.gnome.desktop.interface color-scheme '{val}'")
+            return False
+        dark_switch.connect("state-set", on_dark_toggled)
+
+        style_card.add_row(create_setting_row(
+            "weather-clear-night",
+            "Dark Mode Preference",
+            "Request modern dark interface styling in all GTK and web applications",
+            dark_switch
+        ))
+
+        # GTK Theme Dropdown
+        cur_gtk_theme = run_cmd("gsettings get org.gnome.desktop.interface gtk-theme").strip("'\"")
+        gtk_combo = Gtk.ComboBoxText()
+        for gt in ["Adwaita-dark", "Adwaita", "Breeze-Dark", "Breeze"]:
+            gtk_combo.append(gt, gt)
+        gtk_combo.set_active_id(cur_gtk_theme if cur_gtk_theme in ["Adwaita-dark", "Adwaita", "Breeze-Dark", "Breeze"] else "Adwaita-dark")
+        gtk_combo.connect("changed", lambda c: async_cmd(f"gsettings set org.gnome.desktop.interface gtk-theme '{c.get_active_id()}'"))
+
+        style_card.add_row(create_setting_row(
+            "preferences-desktop-theme",
+            "GTK Widget Theme",
+            "System visual styling for native GTK applications and dialogs",
+            gtk_combo
+        ))
+
+        # Icon Theme Dropdown
+        cur_icon_theme = run_cmd("gsettings get org.gnome.desktop.interface icon-theme").strip("'\"")
+        icon_combo = Gtk.ComboBoxText()
+        for it in ["Adwaita", "breeze-dark", "breeze", "elementary", "gnome"]:
+            icon_combo.append(it, it.title())
+        icon_combo.set_active_id(cur_icon_theme if cur_icon_theme in ["Adwaita", "breeze-dark", "breeze", "elementary", "gnome"] else "Adwaita")
+        icon_combo.connect("changed", lambda c: async_cmd(f"gsettings set org.gnome.desktop.interface icon-theme '{c.get_active_id()}'"))
+
+        style_card.add_row(create_setting_row(
+            "preferences-desktop-icons",
+            "System Icon Theme",
+            "Application and file icon set used throughout the desktop",
+            icon_combo
+        ))
+
+        # Cursor Size Dropdown
+        cur_cursor_size = run_cmd("gsettings get org.gnome.desktop.interface cursor-size").strip() or "24"
+        cursor_combo = Gtk.ComboBoxText()
+        cursor_combo.append("24", "24 px (Standard)")
+        cursor_combo.append("32", "32 px (Medium)")
+        cursor_combo.append("48", "48 px (Large / High DPI)")
+        cursor_combo.set_active_id(cur_cursor_size if cur_cursor_size in ["24", "32", "48"] else "24")
+        cursor_combo.connect("changed", lambda c: async_cmd(f"gsettings set org.gnome.desktop.interface cursor-size {c.get_active_id()}"))
+
+        style_card.add_row(create_setting_row(
+            "input-mouse",
+            "Mouse Cursor Size",
+            "Adjust cursor arrow and pointer dimensions",
+            cursor_combo
+        ))
+
+        # Niri Window Gaps & Borders
+        kdl_state = get_niri_input_state()
+        gaps_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 32, 2)
+        gaps_scale.set_value(kdl_state["gaps"])
+        gaps_scale.set_size_request(180, -1)
+        gaps_scale.connect("value-changed", lambda s: update_niri_layout(gaps=s.get_value()))
+
+        style_card.add_row(create_setting_row(
+            "view-fullscreen",
+            "Window Gaps (Spacing)",
+            "Margin separation spacing between tiled columns and screen edges",
+            gaps_scale
+        ))
+
+        border_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 6, 1)
+        border_scale.set_value(kdl_state["border_width"])
+        border_scale.set_size_request(180, -1)
+        border_scale.connect("value-changed", lambda s: update_niri_layout(border_width=s.get_value()))
+
+        style_card.add_row(create_setting_row(
+            "preferences-desktop-display",
+            "Active Window Border Width",
+            "Glow outline thickness around currently focused window",
+            border_scale
+        ))
 
         return scroll
 
     # ==========================================
-    # PAGE 3: DOCK & APP SWITCHER
+    # PAGE 3: DOCK & BARS
     # ==========================================
     def page_dock(self):
-        scroll, vbox = self.make_page_container("macOS Dock & Switcher", "Manage the bottom application dock and Super+Tab App Switcher HUD")
+        scroll, vbox = self.make_page_container("Dock & Top Bar", "Manage bottom macOS dock, top Waybar, and Super+Tab App Switcher HUD")
 
         dock_card = SettingsCard()
         vbox.pack_start(dock_card, False, False, 0)
@@ -496,24 +708,45 @@ class NiriSettingsApp(Gtk.Window):
         dock_card.add_row(create_setting_row(
             "user-desktop",
             "Bottom macOS Dock",
-            "Floating frosted glass dock with 120Hz smooth physics and auto-hide",
+            "Floating frosted glass dock with 120Hz smooth physics and dynamic active apps",
             restart_btn
         ))
 
-        # Auto-hide description
         dock_card.add_row(create_setting_row(
             "go-bottom",
             "Intelligent Auto-Hide",
-            "Automatically glides down when windows are open; stays visible on empty desktop",
+            "Glides down when windows are open; stays visible on empty desktop",
             Gtk.Label(label="Active")
         ))
 
-        # Overview reveal
         dock_card.add_row(create_setting_row(
             "view-grid",
             "Overview Integration",
-            "Smoothly slides up and stays visible whenever Overview (Mod+D) is open",
+            "Smoothly slides up and stays visible whenever Overview (Mod+D) is active",
             Gtk.Label(label="Enabled")
+        ))
+
+        # Top Bar & Daemons Card
+        vbox.pack_start(Gtk.Label(label="DESKTOP SHELL SERVICES", xalign=0, name="section-caption"), False, False, 0)
+        bar_card = SettingsCard()
+        vbox.pack_start(bar_card, False, False, 0)
+
+        waybar_btn = Gtk.Button(label="Restart Waybar")
+        waybar_btn.connect("clicked", lambda *_: async_cmd("killall waybar; sleep 0.2; waybar &"))
+        bar_card.add_row(create_setting_row(
+            "preferences-system-windows",
+            "Top Status Bar (Waybar)",
+            "System clock, battery monitor, audio status, workspaces & tray",
+            waybar_btn
+        ))
+
+        swaync_btn = Gtk.Button(label="Restart SwayNC")
+        swaync_btn.connect("clicked", lambda *_: async_cmd("pkill swaync; sleep 0.2; swaync &"))
+        bar_card.add_row(create_setting_row(
+            "preferences-system-notifications",
+            "Notification Center (SwayNC)",
+            "Right slide-out notification drawer, media control, and quick toggles",
+            swaync_btn
         ))
 
         # Switcher HUD
@@ -524,7 +757,7 @@ class NiriSettingsApp(Gtk.Window):
         hud_card.add_row(create_setting_row(
             "preferences-system-windows",
             "Super+Tab / Alt+Tab Switcher",
-            "macOS-authentic floating pill with 64px icons, squircle selection plate, and instant switch on key release",
+            "macOS-authentic floating pill with 64px icons and instant switch on key release",
             Gtk.Label(label="Active")
         ))
 
@@ -545,138 +778,94 @@ class NiriSettingsApp(Gtk.Window):
         return scroll
 
     # ==========================================
-    # PAGE 4: SOUND & AUDIO
+    # PAGE 4: MOUSE & TOUCHPAD (NEW)
     # ==========================================
-    def page_sound(self):
-        scroll, vbox = self.make_page_container("Sound & Audio", "Manage audio outputs, master volume levels, and microphone inputs")
+    def page_mouse(self):
+        scroll, vbox = self.make_page_container("Mouse & Touchpad", "Touchpad gestures, tap to click, natural scrolling, and tracking speed")
 
-        audio_card = SettingsCard()
-        vbox.pack_start(audio_card, False, False, 0)
+        kdl_state = get_niri_input_state()
 
-        # Current volume via wpctl
-        cur_vol = 70
-        try:
-            out = run_cmd("wpctl get-volume @DEFAULT_AUDIO_SINK@")
-            if "Volume:" in out:
-                cur_vol = int(float(out.split()[1]) * 100)
-        except Exception:
-            pass
+        # Touchpad Settings Card
+        vbox.pack_start(Gtk.Label(label="TOUCHPAD GESTURES & BEHAVIOR", xalign=0, name="section-caption"), False, False, 0)
+        pad_card = SettingsCard()
+        vbox.pack_start(pad_card, False, False, 0)
 
-        vol_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        vol_scale.set_value(cur_vol)
-        vol_scale.set_size_request(200, -1)
-        vol_scale.connect("value-changed", lambda s: async_cmd(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {s.get_value()/100:.2f}"))
-
-        audio_card.add_row(create_setting_row(
-            "audio-volume-high",
-            "Output Volume",
-            "Adjust system master playback volume",
-            vol_scale
+        # Tap to Click
+        tap_sw = Gtk.Switch()
+        tap_sw.set_active(kdl_state["tap"])
+        tap_sw.connect("state-set", lambda _, state: (update_niri_input(tap=state), False)[1])
+        pad_card.add_row(create_setting_row(
+            "input-touchpad",
+            "Tap to Click",
+            "Tap surface with one finger for left click, two fingers for right click",
+            tap_sw
         ))
 
-        # Test audio button
-        test_btn = Gtk.Button(label="Play Test Sound")
-        test_btn.connect("clicked", lambda *_: async_cmd("paplay /usr/share/sounds/freedesktop/stereo/audio-channel-front-center.oga 2>/dev/null || wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.7"))
-        audio_card.add_row(create_setting_row(
-            "audio-speakers",
-            "Audio Output Device",
-            "Built-in Analog Stereo / PipeWire Audio Engine",
-            test_btn
+        # Natural Scrolling (Touchpad)
+        nat_sw = Gtk.Switch()
+        nat_sw.set_active(kdl_state["natural_touchpad"])
+        nat_sw.connect("state-set", lambda _, state: (update_niri_input(natural_touchpad=state), False)[1])
+        pad_card.add_row(create_setting_row(
+            "view-refresh-symbolic",
+            "Natural Scrolling",
+            "Content moves smoothly in the same direction as your two-finger gesture (macOS style)",
+            nat_sw
         ))
 
-        # Microphone card
-        mic_card = SettingsCard()
-        vbox.pack_start(mic_card, False, False, 0)
-
-        mic_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        mic_scale.set_value(80)
-        mic_scale.set_size_request(200, -1)
-        mic_scale.connect("value-changed", lambda s: async_cmd(f"wpctl set-volume @DEFAULT_AUDIO_SOURCE@ {s.get_value()/100:.2f}"))
-
-        mic_card.add_row(create_setting_row(
-            "audio-input-microphone",
-            "Input Volume (Microphone)",
-            "Adjust microphone sensitivity and input gain",
-            mic_scale
+        # Disable While Typing
+        dwt_sw = Gtk.Switch()
+        dwt_sw.set_active(kdl_state["dwt"])
+        dwt_sw.connect("state-set", lambda _, state: (update_niri_input(dwt=state), False)[1])
+        pad_card.add_row(create_setting_row(
+            "input-keyboard",
+            "Disable While Typing (DWT)",
+            "Prevent accidental cursor jumping and palms tapping while using keyboard",
+            dwt_sw
         ))
 
-        # Audio Sink Switcher Shortcut
-        sink_btn = Gtk.Button(label="Switch Audio Sink...")
-        sink_btn.connect("clicked", lambda *_: async_cmd("bash ~/.config/waybar/audio-sink-switcher.sh"))
-        mic_card.add_row(create_setting_row(
-            "audio-card",
-            "Audio Sink Switcher",
-            "Toggle between built-in speakers, headphones, and HDMI audio",
-            sink_btn
+        # Touchpad Pointer Speed
+        speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -1.0, 1.0, 0.1)
+        speed_scale.set_value(kdl_state["accel_touchpad"])
+        speed_scale.set_size_request(180, -1)
+        speed_scale.connect("value-changed", lambda s: update_niri_input(accel_touchpad=s.get_value()))
+        pad_card.add_row(create_setting_row(
+            "input-mouse",
+            "Touchpad Tracking Speed",
+            "Adjust cursor acceleration and pointer responsiveness",
+            speed_scale
+        ))
+
+        # Scroll Factor
+        scroll_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.4, 2.0, 0.1)
+        scroll_scale.set_value(kdl_state["scroll_factor"])
+        scroll_scale.set_size_request(180, -1)
+        scroll_scale.connect("value-changed", lambda s: update_niri_input(scroll_factor=s.get_value()))
+        pad_card.add_row(create_setting_row(
+            "edit-select-all",
+            "Scroll Sensitivity",
+            "Adjust vertical and horizontal distance traveled per swipe unit",
+            scroll_scale
+        ))
+
+        # Mouse & Focus Card
+        vbox.pack_start(Gtk.Label(label="WINDOW FOCUS & POINTER BEHAVIOR", xalign=0, name="section-caption"), False, False, 0)
+        focus_card = SettingsCard()
+        vbox.pack_start(focus_card, False, False, 0)
+
+        ffm_sw = Gtk.Switch()
+        ffm_sw.set_active(kdl_state["ffm"])
+        ffm_sw.connect("state-set", lambda _, state: (update_niri_input(ffm=state), False)[1])
+        focus_card.add_row(create_setting_row(
+            "preferences-system-windows",
+            "Focus Follows Mouse",
+            "Automatically activate window focus under cursor without requiring a click",
+            ffm_sw
         ))
 
         return scroll
 
     # ==========================================
-    # PAGE 5: NETWORK & BLUETOOTH
-    # ==========================================
-    def page_network(self):
-        scroll, vbox = self.make_page_container("Wi-Fi & Bluetooth", "Control network interfaces, wireless connectivity and Bluetooth accessories")
-
-        net_card = SettingsCard()
-        vbox.pack_start(net_card, False, False, 0)
-
-        # Wi-Fi Radio
-        wifi_state = run_cmd("nmcli -t -f WIFI g") == "enabled"
-        wifi_switch = Gtk.Switch()
-        wifi_switch.set_active(wifi_state)
-        wifi_switch.connect("state-set", lambda _, state: async_cmd(f"nmcli radio wifi {'on' if state else 'off'}"))
-
-        net_card.add_row(create_setting_row(
-            "network-wireless",
-            "Wi-Fi Wireless Radio",
-            "Enable or disable wireless network hardware",
-            wifi_switch
-        ))
-
-        # Connected SSID
-        ssid = run_cmd("nmcli -t -f ACTIVE,SSID dev wifi | grep '^yes:' | cut -d: -f2") or "Disconnected"
-        wifi_btn = Gtk.Button(label="Open Wi-Fi Menu...")
-        wifi_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/python3 ~/.config/waybar/scripts/wifi-popup.py"))
-
-        net_card.add_row(create_setting_row(
-            "network-wireless-signal-excellent",
-            f"Network: {ssid}",
-            "Connected network details and nearby access points",
-            wifi_btn
-        ))
-
-        # Bluetooth Card
-        vbox.pack_start(Gtk.Label(label="BLUETOOTH ACCESSORIES", xalign=0, name="section-caption"), False, False, 0)
-        bt_card = SettingsCard()
-        vbox.pack_start(bt_card, False, False, 0)
-
-        bt_state = "Powered: yes" in run_cmd("bluetoothctl show")
-        bt_switch = Gtk.Switch()
-        bt_switch.set_active(bt_state)
-        bt_switch.connect("state-set", lambda _, state: async_cmd(f"bluetoothctl power {'on' if state else 'off'}"))
-
-        bt_card.add_row(create_setting_row(
-            "bluetooth",
-            "Bluetooth Controller",
-            "Enable or disable Bluetooth device communication",
-            bt_switch
-        ))
-
-        bt_btn = Gtk.Button(label="Bluetooth Settings...")
-        bt_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/python3 ~/.config/waybar/scripts/bluetooth-popup.py"))
-
-        bt_card.add_row(create_setting_row(
-            "preferences-system-bluetooth",
-            "Paired Devices & Discovery",
-            "View battery levels, connect devices, and scan for accessories",
-            bt_btn
-        ))
-
-        return scroll
-
-    # ==========================================
-    # PAGE 6: KEYBOARD & BRIGHTNESS
+    # PAGE 5: KEYBOARD & BRIGHTNESS
     # ==========================================
     def page_keyboard(self):
         scroll, vbox = self.make_page_container("Keyboard & Brightness", "Configure screen illumination, keyboard backlighting, and input preferences")
@@ -700,8 +889,8 @@ class NiriSettingsApp(Gtk.Window):
 
         bright_card.add_row(create_setting_row(
             "display-brightness",
-            "Screen Brightness",
-            "Adjust internal laptop display backlight intensity",
+            "Screen Backlight Intensity",
+            "Adjust internal laptop display brightness",
             b_scale
         ))
 
@@ -713,30 +902,342 @@ class NiriSettingsApp(Gtk.Window):
 
         bright_card.add_row(create_setting_row(
             "input-keyboard",
-            "Keyboard Illumination",
-            "Toggle laptop keyboard backlight key illumination",
+            "Keyboard Key Illumination",
+            "Toggle laptop keyboard backlight keys",
             kbd_switch
         ))
 
-        # Keyboard repeat info
+        # Key Repeat & Input Card
         info_card = SettingsCard()
         vbox.pack_start(info_card, False, False, 0)
 
         info_card.add_row(create_setting_row(
             "preferences-desktop-keyboard",
-            "Key Repeat & Layout",
-            "Layout: English (US) • Repeat Delay: 600ms • Rate: 25 keys/sec",
+            "Layout & Character Repeat",
+            "Layout: English (US) • Repeat Delay: 600ms • Repeat Rate: 25 keys/sec",
             Gtk.Label(label="Configured in Niri")
         ))
 
         return scroll
 
     # ==========================================
-    # PAGE 7: POWER & SCREEN LOCK
+    # PAGE 6: SOUND & AUDIO
+    # ==========================================
+    def page_sound(self):
+        scroll, vbox = self.make_page_container("Sound & Audio", "Manage audio outputs, live device routing, volume levels, and microphone inputs")
+
+        sinks, sources = get_audio_devices()
+
+        # Output Card
+        vbox.pack_start(Gtk.Label(label="OUTPUT PLAYBACK", xalign=0, name="section-caption"), False, False, 0)
+        audio_card = SettingsCard()
+        vbox.pack_start(audio_card, False, False, 0)
+
+        # Current volume via wpctl
+        cur_vol = 70
+        is_muted = False
+        try:
+            out = run_cmd("wpctl get-volume @DEFAULT_AUDIO_SINK@")
+            if "Volume:" in out:
+                cur_vol = int(float(out.split()[1]) * 100)
+            is_muted = "[MUTED]" in out
+        except Exception:
+            pass
+
+        vol_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        vol_scale.set_value(cur_vol)
+        vol_scale.set_size_request(200, -1)
+        vol_scale.connect("value-changed", lambda s: async_cmd(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {s.get_value()/100:.2f}"))
+
+        audio_card.add_row(create_setting_row(
+            "audio-volume-high",
+            "Master Output Volume",
+            "Adjust playback sound level across all applications",
+            vol_scale
+        ))
+
+        # Output Sink Selector
+        sink_combo = Gtk.ComboBoxText()
+        active_sink_id = None
+        for s in sinks:
+            sink_combo.append(s["id"], s["name"])
+            if s["default"]:
+                active_sink_id = s["id"]
+        if active_sink_id:
+            sink_combo.set_active_id(active_sink_id)
+        sink_combo.connect("changed", lambda c: async_cmd(f"wpctl set-default {c.get_active_id()}"))
+
+        audio_card.add_row(create_setting_row(
+            "audio-speakers",
+            "Active Output Device",
+            "Select hardware speaker, Bluetooth headset, or HDMI monitor",
+            sink_combo
+        ))
+
+        # Output Mute Toggle
+        out_mute_sw = Gtk.Switch()
+        out_mute_sw.set_active(not is_muted)
+        out_mute_sw.connect("state-set", lambda _, state: async_cmd(f"wpctl set-mute @DEFAULT_AUDIO_SINK@ {'0' if state else '1'}"))
+        audio_card.add_row(create_setting_row(
+            "audio-volume-muted",
+            "Audio Playback Enabled",
+            "Mute or un-mute master sound output",
+            out_mute_sw
+        ))
+
+        # Test audio button
+        test_btn = Gtk.Button(label="Play Test Chime")
+        test_btn.connect("clicked", lambda *_: async_cmd("paplay /usr/share/sounds/freedesktop/stereo/audio-channel-front-center.oga 2>/dev/null || wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.7"))
+        audio_card.add_row(create_setting_row(
+            "audio-headphones",
+            "Speaker & Channel Test",
+            "Emit stereo tone to verify output routing and balance",
+            test_btn
+        ))
+
+        # Microphone Input Card
+        vbox.pack_start(Gtk.Label(label="INPUT MICROPHONE", xalign=0, name="section-caption"), False, False, 0)
+        mic_card = SettingsCard()
+        vbox.pack_start(mic_card, False, False, 0)
+
+        cur_mic_vol = 80
+        try:
+            m_out = run_cmd("wpctl get-volume @DEFAULT_AUDIO_SOURCE@")
+            if "Volume:" in m_out:
+                cur_mic_vol = int(float(m_out.split()[1]) * 100)
+        except Exception:
+            pass
+
+        mic_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        mic_scale.set_value(cur_mic_vol)
+        mic_scale.set_size_request(200, -1)
+        mic_scale.connect("value-changed", lambda s: async_cmd(f"wpctl set-volume @DEFAULT_AUDIO_SOURCE@ {s.get_value()/100:.2f}"))
+
+        mic_card.add_row(create_setting_row(
+            "audio-input-microphone",
+            "Microphone Input Level",
+            "Adjust microphone gain and recording sensitivity",
+            mic_scale
+        ))
+
+        # Input Source Selector
+        source_combo = Gtk.ComboBoxText()
+        active_source_id = None
+        for sc in sources:
+            source_combo.append(sc["id"], sc["name"])
+            if sc["default"]:
+                active_source_id = sc["id"]
+        if active_source_id:
+            source_combo.set_active_id(active_source_id)
+        source_combo.connect("changed", lambda c: async_cmd(f"wpctl set-default {c.get_active_id()}"))
+
+        mic_card.add_row(create_setting_row(
+            "audio-card",
+            "Active Recording Device",
+            "Select internal analog microphone or external USB/Bluetooth headset",
+            source_combo
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE 7: NETWORK & BLUETOOTH
+    # ==========================================
+    def page_network(self):
+        scroll, vbox = self.make_page_container("Wi-Fi & Bluetooth", "Control network interfaces, wireless connectivity and Bluetooth accessories")
+
+        net_card = SettingsCard()
+        vbox.pack_start(net_card, False, False, 0)
+
+        # Wi-Fi toggle
+        wifi_on = run_cmd("nmcli radio wifi") == "enabled"
+        wifi_switch = Gtk.Switch()
+        wifi_switch.set_active(wifi_on)
+        wifi_switch.connect("state-set", lambda _, state: async_cmd(f"nmcli radio wifi {'on' if state else 'off'}"))
+
+        net_card.add_row(create_setting_row(
+            "network-wireless",
+            "Wi-Fi Wireless Radio",
+            "Enable or disable 802.11 Wi-Fi networking radio",
+            wifi_switch
+        ))
+
+        wifi_btn = Gtk.Button(label="Network Menu...")
+        wifi_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/python3 ~/.config/waybar/scripts/wifi-popup.py"))
+
+        net_card.add_row(create_setting_row(
+            "network-workgroup",
+            "Available Networks & Hotspots",
+            "Scan nearby access points, join networks, or configure static IP",
+            wifi_btn
+        ))
+
+        # Bluetooth Card
+        bt_card = SettingsCard()
+        vbox.pack_start(bt_card, False, False, 0)
+
+        bt_state = run_cmd("bluetoothctl show | grep 'Powered:'")
+        bt_on = "yes" in bt_state
+        bt_switch = Gtk.Switch()
+        bt_switch.set_active(bt_on)
+        bt_switch.connect("state-set", lambda _, state: async_cmd(f"bluetoothctl power {'on' if state else 'off'}"))
+
+        bt_card.add_row(create_setting_row(
+            "bluetooth-active",
+            "Bluetooth Radio",
+            "Connect wireless accessories, mice, keyboards, and headphones",
+            bt_switch
+        ))
+
+        bt_btn = Gtk.Button(label="Bluetooth Settings...")
+        bt_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/python3 ~/.config/waybar/scripts/bluetooth-popup.py"))
+
+        bt_card.add_row(create_setting_row(
+            "preferences-system-bluetooth",
+            "Paired Devices & Discovery",
+            "View battery levels, connect devices, and scan for accessories",
+            bt_btn
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE 8: NOTIFICATIONS & DND (NEW)
+    # ==========================================
+    def page_notifications(self):
+        scroll, vbox = self.make_page_container("Notifications & DND", "Manage desktop alerts, Do Not Disturb, and notification history")
+
+        notif_card = SettingsCard()
+        vbox.pack_start(notif_card, False, False, 0)
+
+        # Do Not Disturb Toggle
+        dnd_active = run_cmd("swaync-client -D") == "true"
+        dnd_sw = Gtk.Switch()
+        dnd_sw.set_active(dnd_active)
+        dnd_sw.connect("state-set", lambda _, state: async_cmd("swaync-client -d"))
+
+        notif_card.add_row(create_setting_row(
+            "notifications-disabled",
+            "Do Not Disturb (DND)",
+            "Silence popups and banners during presentations and focused work",
+            dnd_sw
+        ))
+
+        # Notification Center Drawer
+        drawer_btn = Gtk.Button(label="Open Notification Center")
+        drawer_btn.connect("clicked", lambda *_: async_cmd("swaync-client -t"))
+
+        notif_card.add_row(create_setting_row(
+            "preferences-system-notifications",
+            "Notification Center Drawer",
+            "Toggle right-hand sidebar showing missed alerts, calendar, and media widgets",
+            drawer_btn
+        ))
+
+        # Clear All Notifications
+        clear_btn = Gtk.Button(label="Clear All Alerts")
+        clear_btn.connect("clicked", lambda *_: async_cmd("swaync-client -C"))
+
+        notif_card.add_row(create_setting_row(
+            "edit-clear-all",
+            "Dismiss All Notifications",
+            "Clear and wipe active notifications history from drawer",
+            clear_btn
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE 9: DEFAULT APPLICATIONS (NEW)
+    # ==========================================
+    def page_defaults(self):
+        scroll, vbox = self.make_page_container("Default Applications", "Configure preferred web browser, file manager, text editor, and terminal")
+
+        app_card = SettingsCard()
+        vbox.pack_start(app_card, False, False, 0)
+
+        # Default Web Browser
+        cur_browser = run_cmd("xdg-settings get default-web-browser")
+        browser_combo = Gtk.ComboBoxText()
+        browser_combo.append("app.zen_browser.zen.desktop", "Zen Browser")
+        browser_combo.append("google-chrome.desktop", "Google Chrome")
+        browser_combo.set_active_id(cur_browser if "zen" in cur_browser or "chrome" in cur_browser else "app.zen_browser.zen.desktop")
+        browser_combo.connect("changed", lambda c: async_cmd(f"xdg-settings set default-web-browser {c.get_active_id()}"))
+
+        app_card.add_row(create_setting_row(
+            "web-browser",
+            "Default Web Browser",
+            "Application used to open web links, HTTP URLs, and HTML documents",
+            browser_combo
+        ))
+
+        # Default File Manager
+        cur_fm = run_cmd("xdg-mime query default inode/directory")
+        fm_combo = Gtk.ComboBoxText()
+        fm_combo.append("org.gnome.Nautilus.desktop", "GNOME Files (Nautilus)")
+        fm_combo.set_active_id("org.gnome.Nautilus.desktop")
+        fm_combo.connect("changed", lambda c: async_cmd(f"xdg-mime default {c.get_active_id()} inode/directory"))
+
+        app_card.add_row(create_setting_row(
+            "system-file-manager",
+            "Default File Manager",
+            "Application used to browse directories, folders, and storage devices",
+            fm_combo
+        ))
+
+        # Default Text / Code Editor
+        cur_editor = run_cmd("xdg-mime query default text/plain")
+        editor_combo = Gtk.ComboBoxText()
+        editor_combo.append("code.desktop", "Visual Studio Code")
+        editor_combo.append("org.gnome.gedit.desktop", "GNOME Text Editor (Gedit)")
+        editor_combo.set_active_id(cur_editor if "code" in cur_editor or "gedit" in cur_editor else "code.desktop")
+        editor_combo.connect("changed", lambda c: async_cmd(f"xdg-mime default {c.get_active_id()} text/plain"))
+
+        app_card.add_row(create_setting_row(
+            "accessories-text-editor",
+            "Default Code / Text Editor",
+            "Application used to open source code, markdown, and plain text files",
+            editor_combo
+        ))
+
+        # Default Terminal
+        app_card.add_row(create_setting_row(
+            "utilities-terminal",
+            "Default Terminal Emulator",
+            "GPU-accelerated Kitty terminal configured for Niri hotkeys",
+            Gtk.Label(label="Kitty Terminal")
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE 10: POWER & PERFORMANCE
     # ==========================================
     def page_power(self):
-        scroll, vbox = self.make_page_container("Power & Screen Lock", "Battery conservation mode, automatic screen locking, and system shutdown")
+        scroll, vbox = self.make_page_container("Power & Performance", "Hardware power profiles, battery optimization, and screen locking")
 
+        # Hardware Power Profile Card
+        vbox.pack_start(Gtk.Label(label="SYSTEM POWER PROFILE", xalign=0, name="section-caption"), False, False, 0)
+        perf_card = SettingsCard()
+        vbox.pack_start(perf_card, False, False, 0)
+
+        cur_profile = get_power_profile()
+        profile_combo = Gtk.ComboBoxText()
+        profile_combo.append("performance", "High Performance (Unthrottled Clock Speeds)")
+        profile_combo.append("balanced", "Balanced (Standard Dynamic Power / Performance)")
+        profile_combo.append("power-saver", "Power Saver (Maximum Battery Conservation)")
+        profile_combo.set_active_id(cur_profile if cur_profile in ["performance", "balanced", "power-saver"] else "balanced")
+        profile_combo.connect("changed", lambda c: set_power_profile(c.get_active_id()))
+
+        perf_card.add_row(create_setting_row(
+            "power-profile-balanced",
+            "Hardware Energy Profile",
+            "Tune CPU clock states, GPU power gating, and cooling fan curves",
+            profile_combo
+        ))
+
+        # Battery Health Card
+        vbox.pack_start(Gtk.Label(label="BATTERY STATE", xalign=0, name="section-caption"), False, False, 0)
         bat_card = SettingsCard()
         vbox.pack_start(bat_card, False, False, 0)
 
@@ -751,8 +1252,8 @@ class NiriSettingsApp(Gtk.Window):
 
         bat_card.add_row(create_setting_row(
             "battery-good",
-            f"Battery Level: {perc}",
-            f"Status: {state} • Health Optimized",
+            f"Battery Charge: {perc}",
+            f"Status: {state} • Health Conservation Active",
             Gtk.Label(label=perc)
         ))
 
@@ -778,50 +1279,118 @@ class NiriSettingsApp(Gtk.Window):
 
         lock_btn = Gtk.Button(label="Lock Screen Now")
         lock_btn.connect("clicked", lambda *_: async_cmd("swaylock"))
-        action_card.add_row(create_setting_row("system-lock-screen", "Lock Session", "Instantly lock current display session (Mod+L)", lock_btn))
+        action_card.add_row(create_setting_row("system-lock-screen", "Lock Session", "Immediately lock session and turn off screen illumination", lock_btn))
 
-        menu_btn = Gtk.Button(label="Open Power Matrix...")
-        menu_btn.connect("clicked", lambda *_: async_cmd("wlogout"))
-        action_card.add_row(create_setting_row("system-shutdown", "Power Menu (Wlogout)", "Suspend, Hibernate, Reboot or Shut down machine (Mod+Shift+E)", menu_btn))
+        suspend_btn = Gtk.Button(label="Suspend PC")
+        suspend_btn.connect("clicked", lambda *_: async_cmd("systemctl suspend"))
+        action_card.add_row(create_setting_row("system-suspend", "Sleep / Suspend", "Enter low power sleep mode", suspend_btn))
+
+        power_btn = Gtk.Button(label="Power Menu...")
+        power_btn.connect("clicked", lambda *_: async_cmd("wlogout"))
+        action_card.add_row(create_setting_row("system-shutdown", "Shut Down / Reboot", "Open interactive macOS-styled power menu", power_btn))
 
         return scroll
 
     # ==========================================
-    # PAGE 8: SHORTCUTS REFERENCE
+    # PAGE 11: STORAGE & MAINTENANCE (NEW)
+    # ==========================================
+    def page_storage(self):
+        scroll, vbox = self.make_page_container("Storage & Maintenance", "Local disk utilization, system storage overview, and temporary cache cleaning")
+
+        disk_card = SettingsCard()
+        vbox.pack_start(disk_card, False, False, 0)
+
+        try:
+            total, used, free = shutil.disk_usage("/home/sreyas")
+            t_gb = round(total / (1024**3), 1)
+            u_gb = round(used / (1024**3), 1)
+            f_gb = round(free / (1024**3), 1)
+            perc = round((used / total) * 100, 1)
+        except Exception:
+            t_gb, u_gb, f_gb, perc = 500, 400, 100, 80
+
+        # Progress bar
+        pbar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pbar_box.set_margin_start(16)
+        pbar_box.set_margin_end(16)
+        pbar_box.set_margin_top(14)
+        pbar_box.set_margin_bottom(14)
+
+        p_lbl = Gtk.Label(label=f"NVMe SSD Storage (Home Directory): {u_gb} GB of {t_gb} GB used ({f_gb} GB free)")
+        p_lbl.set_name("row-title")
+        p_lbl.set_xalign(0)
+        pbar_box.pack_start(p_lbl, False, False, 0)
+
+        pbar = Gtk.ProgressBar()
+        pbar.set_fraction(perc / 100.0)
+        pbar.set_text(f"{perc}% Used")
+        pbar.set_show_text(True)
+        pbar_box.pack_start(pbar, False, False, 0)
+
+        disk_card.pack_start(pbar_box, False, False, 0)
+
+        # Maintenance Card
+        vbox.pack_start(Gtk.Label(label="STORAGE CLEANUP & OPTIMIZATION", xalign=0, name="section-caption"), False, False, 0)
+        maint_card = SettingsCard()
+        vbox.pack_start(maint_card, False, False, 0)
+
+        clean_cache_btn = Gtk.Button(label="Clean Thumbnail Cache")
+        clean_cache_btn.connect("clicked", lambda *_: async_cmd("rm -rf ~/.cache/thumbnails/* && notify-send 'Storage' 'Thumbnail cache wiped!'"))
+        maint_card.add_row(create_setting_row(
+            "edit-clear",
+            "Clear Thumbnail Cache",
+            "Remove generated image previews and thumbnail cache in ~/.cache/thumbnails",
+            clean_cache_btn
+        ))
+
+        flatpak_clean_btn = Gtk.Button(label="Clean Unused Flatpaks")
+        flatpak_clean_btn.connect("clicked", lambda *_: async_cmd("flatpak uninstall --unused -y && notify-send 'Storage' 'Unused Flatpak runtimes cleaned!'"))
+        maint_card.add_row(create_setting_row(
+            "package-x-generic",
+            "Remove Unused Flatpak Runtimes",
+            "Uninstall orphan GNOME/KDE Flatpak runtime libraries no longer required",
+            flatpak_clean_btn
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE 12: SHORTCUTS REFERENCE
     # ==========================================
     def page_shortcuts(self):
-        scroll, vbox = self.make_page_container("Shortcuts Reference", "Master cheat sheet of all Niri compositor and desktop shortcuts")
+        scroll, vbox = self.make_page_container("Shortcuts Reference", "Interactive cheatsheet for all Niri window management and desktop shortcuts")
 
         search_entry = Gtk.SearchEntry()
-        search_entry.set_placeholder_text("Search keybindings (e.g. terminal, lock, overview)...")
+        search_entry.set_placeholder_text("Search keybindings by action or key name...")
+        search_entry.set_size_request(-1, 38)
         vbox.pack_start(search_entry, False, False, 0)
 
         shortcuts_card = SettingsCard()
         vbox.pack_start(shortcuts_card, False, False, 0)
 
         shortcuts = [
-            ("Mod + Tab", "macOS App Switcher HUD (hold Mod, tap Tab to cycle forward)"),
-            ("Mod + ` (tilde)", "Cycle backward through macOS App Switcher"),
-            ("Mod + Return", "Open Terminal (Kitty)"),
-            ("Mod + Space", "Open Application Launcher (Fuzzel)"),
-            ("Mod + D", "Toggle Desktop Overview (reveals macOS dock)"),
-            ("Mod + , (comma)", "Open Niri Settings App"),
-            ("Mod + W", "Open Dynamic Wallpaper Picker"),
-            ("Mod + Shift + T", "Open Desktop Theme Preset Switcher"),
-            ("Mod + Shift + N", "Open SwayNC Notification Center"),
-            ("Mod + Shift + E", "Open Wlogout Glass Power Menu"),
-            ("Mod + L", "Lock Screen Immediately (Swaylock)"),
-            ("Mod + Shift + L", "Toggle Automatic Screen Lock On / Off"),
-            ("Print", "Interactive Area Screenshot Tool"),
+            ("Mod + Return", "Spawn Kitty GPU Terminal"),
+            ("Mod + D", "Open Application Launcher (Fuzzel)"),
+            ("Mod + Comma", "Open Niri Settings Control Center"),
+            ("Mod + Tab / Alt + Tab", "Switch Windows (macOS Style Switcher HUD)"),
+            ("Mod + Shift + T", "Switch Desktop Themes (Waybar, Kitty, Fuzzel)"),
+            ("Mod + Shift + W", "Interactive Wallpaper Picker"),
+            ("Mod + Shift + D", "Toggle Bottom macOS Dock Auto-Hide"),
+            ("Mod + Shift + Slash", "Niri Keybindings Hotkey Cheat Sheet"),
+            ("Mod + L", "Lock Screen (Swaylock Blurred Image)"),
+            ("Mod + Shift + E", "Open Power / Logout Menu (Wlogout)"),
             ("Mod + Q", "Close Focused Window"),
-            ("Mod + F", "Maximize Focused Column"),
-            ("Mod + R", "Cycle Column Widths (33% / 50% / 67%)"),
-            ("Mod + V", "Toggle Window Floating"),
-            ("Mod + Shift + V", "Switch Focus Between Floating & Tiling Windows"),
-            ("Mod + ← / →", "Focus Column Left / Right"),
-            ("Mod + ↑ / ↓", "Focus Workspace Up / Down"),
-            ("Mod + 1–9", "Switch Directly to Workspace 1–9"),
-            ("Mod + Shift + 1–9", "Move Focused Window to Workspace 1–9"),
+            ("Mod + Left / Right", "Navigate Columns Left / Right"),
+            ("Mod + Up / Down", "Navigate Windows in Column Up / Down"),
+            ("Mod + Shift + Left / Right", "Move Window Column Left / Right"),
+            ("Mod + F", "Maximize Column Width"),
+            ("Mod + Shift + F", "Fullscreen Active Window"),
+            ("Mod + Space", "Toggle Window Floating Mode"),
+            ("Mod + 1 .. 9", "Switch to Workspace 1 to 9"),
+            ("Mod + Shift + 1 .. 9", "Move Window to Workspace 1 to 9"),
+            ("Print", "Capture Region Screenshot"),
+            ("Shift + Print", "Capture Full Screen to Clipboard"),
+            ("Ctrl + Print", "Record Screen Video (GPU NVENC)"),
         ]
 
         rows = []
@@ -841,7 +1410,7 @@ class NiriSettingsApp(Gtk.Window):
         return scroll
 
     # ==========================================
-    # PAGE 9: ABOUT SYSTEM
+    # PAGE 13: ABOUT SYSTEM
     # ==========================================
     def page_about(self):
         scroll, vbox = self.make_page_container("About System", "Hardware, kernel and compositor environment details")
@@ -849,7 +1418,6 @@ class NiriSettingsApp(Gtk.Window):
         about_card = SettingsCard()
         vbox.pack_start(about_card, False, False, 0)
 
-        # Dynamic OS Detection from /etc/os-release
         os_pretty = "Fedora Linux"
         os_ver = ""
         if os.path.exists("/etc/os-release"):
@@ -891,10 +1459,13 @@ class NiriSettingsApp(Gtk.Window):
         return scroll
 
     def reload_all_state(self):
-        # Refresh active pages
-        self.stack.remove(self.stack.get_child_by_name("display"))
-        self.stack.add_named(self.page_display(), "display")
-        self.stack.set_visible_child_name("display")
+        for pid in list(self.pages_built.keys()):
+            w = self.pages_built.pop(pid)
+            self.stack.remove(w)
+        cur = self.sidebar_list.get_selected_row()
+        if cur and hasattr(cur, "page_id"):
+            self.load_page(cur.page_id)
+            self.stack.set_visible_child_name(cur.page_id)
 
     def apply_css(self):
         css_provider = Gtk.CssProvider()
@@ -939,146 +1510,173 @@ class NiriSettingsApp(Gtk.Window):
             transition: all 0.12s ease;
         }}
 
-        #nav-row:hover {{
-            background-color: rgba(255, 255, 255, 0.08);
-        }}
-
         #nav-row:selected {{
-            background-color: alpha(@accent-purple, 0.85);
-            color: #FFFFFF;
+            background-color: alpha(@accent-color, 0.22);
         }}
 
-        #nav-row:selected * {{
-            color: #FFFFFF;
-            font-weight: 600;
+        #nav-row:selected #nav-label {{
+            font-weight: 700;
+            color: @accent-color;
+        }}
+
+        #nav-label {{
+            font-size: 13px;
+            font-weight: 500;
         }}
 
         #sidebar-divider {{
-            background-color: alpha(@border-color, 0.2);
+            background-color: alpha(@border-color, 0.25);
             min-width: 1px;
         }}
 
-        /* Main Content Pages */
-        #page-content {{
-            background: transparent;
-        }}
-
+        /* Content Area */
         #page-title {{
             font-size: 22px;
             font-weight: 800;
-            letter-spacing: -0.3px;
+            color: @fg-color;
+            margin-bottom: 2px;
         }}
 
         #page-description {{
-            font-size: 12.5px;
-            color: rgba(255, 255, 255, 0.55);
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.60);
+            margin-bottom: 8px;
         }}
 
         #section-caption {{
             font-size: 11px;
             font-weight: 700;
-            color: alpha(@accent-purple, 0.9);
+            color: alpha(@accent-color, 0.85);
             letter-spacing: 0.8px;
-            margin-top: 10px;
-            margin-bottom: 2px;
+            margin-top: 6px;
+            margin-bottom: -4px;
         }}
 
-        /* Grouped Settings Cards (iOS/macOS style) */
+        /* Settings Card (iOS / macOS Style) */
         #settings-card {{
-            background-color: alpha(@bg-color, 0.80);
+            background-color: alpha(@bg-color, 0.70);
             border: 1px solid alpha(@border-color, 0.35);
             border-radius: 14px;
             padding: 2px 0px;
-            margin-bottom: 8px;
         }}
 
         #settings-row {{
             padding: 10px 16px;
+            min-height: 48px;
         }}
 
         #card-separator {{
-            background-color: alpha(@border-color, 0.15);
+            background-color: alpha(@border-color, 0.18);
             min-height: 1px;
-            margin: 0 16px;
+            margin-left: 54px;
+            margin-right: 16px;
         }}
 
         #icon-badge {{
-            background-color: alpha(@accent-purple, 0.18);
-            border-radius: 10px;
-            min-width: 36px;
-            min-height: 36px;
-            padding: 4px;
+            background-color: alpha(@accent-color, 0.14);
+            border-radius: 9px;
+            padding: 8px;
+            min-width: 32px;
+            min-height: 32px;
         }}
 
         #row-title {{
             font-size: 13.5px;
             font-weight: 600;
+            color: @fg-color;
         }}
 
         #row-subtitle {{
-            font-size: 11.5px;
-            color: rgba(255, 255, 255, 0.52);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.55);
         }}
 
-        /* Keybinding Badges */
         #key-badge {{
-            background-color: rgba(255, 255, 255, 0.12);
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            background-color: alpha(@accent-color, 0.18);
+            border: 1px solid alpha(@accent-color, 0.40);
             border-radius: 6px;
-            padding: 4px 10px;
+            padding: 4px 8px;
             font-family: "JetBrains Mono", monospace;
-            font-weight: bold;
             font-size: 11px;
-            color: @accent-purple;
+            font-weight: 700;
+            color: @accent-color;
         }}
 
-        /* Wallpaper Thumbnails */
-        #wallpaper-thumb {{
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+        #wall-preview-img {{
+            border-radius: 10px;
+            border: 1px solid alpha(@border-color, 0.4);
         }}
 
         #gallery-btn {{
-            background: transparent;
-            border: 2px solid transparent;
-            border-radius: 10px;
-            padding: 2px;
+            border-radius: 8px;
+            padding: 0;
             margin: 4px;
+            border: 2px solid transparent;
+            background: transparent;
         }}
 
         #gallery-btn:hover {{
-            border-color: @accent-purple;
+            border-color: @accent-color;
         }}
 
-        /* Buttons & Controls */
+        /* Switches & Controls */
+        switch:checked {{
+            background-color: @accent-color;
+        }}
+
+        scale highlight {{
+            background-color: @accent-color;
+            border-radius: 4px;
+        }}
+
+        scale slider {{
+            background-color: @fg-color;
+            border-radius: 50%;
+            min-width: 16px;
+            min-height: 16px;
+        }}
+
         button {{
             border-radius: 8px;
             padding: 6px 14px;
-            font-weight: 600;
+            background-color: alpha(@accent-color, 0.14);
+            border: 1px solid alpha(@accent-color, 0.35);
             font-size: 12.5px;
+            font-weight: 600;
             transition: all 0.12s ease;
         }}
 
         button:hover {{
-            background-color: alpha(@accent-purple, 0.25);
-            border-color: @accent-purple;
+            background-color: alpha(@accent-color, 0.28);
+            border-color: @accent-color;
         }}
 
-        switch:checked {{
-            background-color: @accent-purple;
+        combobox button.combo {{
+            padding: 4px 10px;
+            border-radius: 8px;
         }}
 
-        scale highlight {{
-            background-color: @accent-purple;
-            border-radius: 4px;
+        progressbar trough {{
+            border-radius: 8px;
+            background-color: alpha(@border-color, 0.3);
+            min-height: 14px;
+        }}
+
+        progressbar progress {{
+            border-radius: 8px;
+            background-color: @accent-color;
+            min-height: 14px;
         }}
         """
-        css_provider.load_from_data(css.encode('utf-8'))
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(),
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+        try:
+            css_provider.load_from_data(css.encode('utf-8'))
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(),
+                css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+        except Exception as e:
+            print(f"Error loading CSS: {e}")
 
 
 def main():
