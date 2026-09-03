@@ -50,6 +50,8 @@ def format_app_name(app_id, title=""):
         return "Visual Studio Code"
     if "lutris" in aid:
         return "Lutris"
+    if "niri-settings" in aid or "settings" in aid:
+        return "Niri Settings"
     if "tauon" in aid:
         return "Tauon Music"
     if "firefox" in aid:
@@ -84,6 +86,8 @@ def get_app_icon_pixbuf(app_id, title="", size=44):
             candidates.extend(["vscode", "/usr/share/pixmaps/vscode.png", "com.visualstudio.code", "code"])
         if "lutris" in aid:
             candidates.extend(["net.lutris.Lutris", "lutris"])
+        if "niri-settings" in aid or "settings" in aid:
+            candidates.extend(["preferences-system", "org.gnome.Settings", "preferences-desktop"])
         if "kitty" in aid:
             candidates.extend(["kitty", "utilities-terminal"])
         if "tauon" in aid:
@@ -149,6 +153,12 @@ PINNED_APPS = [
         "icon": ["net.lutris.Lutris", "lutris"],
         "cmd": "lutris",
         "app_ids": ["net.lutris.lutris", "lutris"]
+    },
+    {
+        "name": "Settings",
+        "icon": ["preferences-system", "org.gnome.Settings", "preferences-desktop"],
+        "cmd": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py",
+        "app_ids": ["niri-settings", "niri-settings.py"]
     },
 ]
 
