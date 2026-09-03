@@ -46,6 +46,9 @@ overview {
 
 layout {
     gaps 16
+    struts {
+        top -6
+    }
     center-focused-column "on-overflow"
     preset-column-widths {
         proportion 0.33333
