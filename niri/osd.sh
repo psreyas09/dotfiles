@@ -11,6 +11,7 @@ show_volume() {
     
     if [[ "$vol_raw" == *"[MUTED]"* ]]; then
         notify-send -h string:x-canonical-private-synchronous:osd \
+                    -h boolean:SWAYNC_BYPASS_DND:true \
                     -h int:value:"$vol" \
                     -u low \
                     -t 1200 \
@@ -27,6 +28,7 @@ show_volume() {
             icon="audio-volume-medium"
         fi
         notify-send -h string:x-canonical-private-synchronous:osd \
+                    -h boolean:SWAYNC_BYPASS_DND:true \
                     -h int:value:"$vol" \
                     -u low \
                     -t 1200 \
@@ -41,6 +43,7 @@ show_mic() {
     mic_raw=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@)
     if [[ "$mic_raw" == *"[MUTED]"* ]]; then
         notify-send -h string:x-canonical-private-synchronous:osd \
+                    -h boolean:SWAYNC_BYPASS_DND:true \
                     -u low \
                     -t 1200 \
                     -a "osd" \
@@ -48,6 +51,7 @@ show_mic() {
                     "Microphone" "Muted"
     else
         notify-send -h string:x-canonical-private-synchronous:osd \
+                    -h boolean:SWAYNC_BYPASS_DND:true \
                     -u low \
                     -t 1200 \
                     -a "osd" \
@@ -60,6 +64,7 @@ show_brightness() {
     local bright
     bright=$(brightnessctl -m | cut -d, -f4 | tr -d '%')
     notify-send -h string:x-canonical-private-synchronous:osd \
+                -h boolean:SWAYNC_BYPASS_DND:true \
                 -h int:value:"$bright" \
                 -u low \
                 -t 1200 \
@@ -75,6 +80,7 @@ show_kbd_backlight() {
         kbd_val=0
     fi
     notify-send -h string:x-canonical-private-synchronous:osd \
+                -h boolean:SWAYNC_BYPASS_DND:true \
                 -h int:value:"$kbd_val" \
                 -u low \
                 -t 1200 \

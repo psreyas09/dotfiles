@@ -24,6 +24,7 @@ static void show_osd(int pct, const char *status_str) {
         char *args[] = {
             "notify-send",
             "-h", "string:x-canonical-private-synchronous:osd",
+            "-h", "boolean:SWAYNC_BYPASS_DND:true",
             "-h", pct_hint,
             "-u", "low",
             "-t", "1200",

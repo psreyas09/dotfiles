@@ -6,7 +6,7 @@
 
     "modules-left": ["custom/launcher", "niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
-    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "pulseaudio", "battery", "custom/notification", "custom/power"],
+    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "group/audio", "battery", "custom/notification", "custom/power"],
 
     "custom/launcher": {
         "format": "",
@@ -89,7 +89,10 @@
         "format": " {status}",
         "format-connected": " {device_alias}",
         "format-disabled": "󰂲",
-        "on-click": "blueman-manager"
+        "max-length": 12,
+        "tooltip-format-connected": "{device_alias}",
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/bluetooth-popup.py",
+        "on-click-right": "blueman-manager"
     },
 
     "network": {
@@ -99,7 +102,21 @@
         "format-linked": "󰈀 {ifname}",
         "format-disconnected": "⚠ Disconnected",
         "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signalStrength}%\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
-        "on-click": "nmgui"
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/wifi-popup.py",
+        "on-click-right": "nm-connection-editor"
+    },
+
+    "group/audio": {
+        "orientation": "inherit",
+        "drawer": {
+            "transition-duration": 300,
+            "children-class": "audio-slider-drawer",
+            "transition-left-to-right": false
+        },
+        "modules": [
+            "pulseaudio",
+            "pulseaudio/slider"
+        ]
     },
 
     "pulseaudio": {
@@ -108,6 +125,12 @@
         "format-icons": { "default": ["", "", ""] },
         "on-click": "pavucontrol",
         "on-click-right": "bash ~/.config/waybar/audio-sink-switcher.sh"
+    },
+
+    "pulseaudio/slider": {
+        "min": 0,
+        "max": 100,
+        "orientation": "horizontal"
     },
 
     "battery": {
@@ -123,7 +146,12 @@
         "format-plugged": " {capacity}%",
         "format-alt": "{time} {icon}",
         "format-icons": ["", "", "", "", ""],
-        "tooltip-format": "Capacity: {capacity}%\nTime remaining: {time}"
+        "tooltip-format": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-charging": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-discharging": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-plugged": "Capacity: {capacity}%\nPlugged in",
+        "tooltip-format-not-charging": "Capacity: {capacity}%\nPlugged in (Conservation Mode)",
+        "tooltip-format-full": "Capacity: {capacity}%\nFully Charged"
     },
 
     "custom/power": {
@@ -144,9 +172,11 @@
     "custom/media": {
         "format": "󰝚 {text}", 
         "return-type": "json",
-        "max-length": 22,
+        "max-length": 14,
         "exec": "$HOME/.config/waybar/mediaplayer.sh",
-        "escape": true
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/media-popup.py",
+        "escape": false,
+        "tooltip": false
     },
 
     "custom/prev": {
@@ -164,6 +194,4 @@
         "format": "󰒭",
         "on-click": "playerctl next"
     }
-}
-    
 }
