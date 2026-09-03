@@ -217,7 +217,16 @@ class AppGridOverlay(Gtk.Window):
         self.scroll.set_name("app-grid-scroll")
         self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.scroll.set_propagate_natural_height(True)
+        self.scroll.set_overlay_scrolling(True)
+        self.scroll.set_kinetic_scrolling(False)
         main_vbox.pack_start(self.scroll, True, True, 0)
+
+        # Smooth 120Hz Scrolling State
+        self.vadj = self.scroll.get_vadjustment()
+        self.target_y = 0.0
+        self.current_y = 0.0
+        self.is_animating_scroll = False
+        self.scroll.connect("scroll-event", self.on_smooth_scroll)
 
         # FlowBox for Multi-column Application Grid (6 columns centered)
         self.flowbox = Gtk.FlowBox()
@@ -227,7 +236,7 @@ class AppGridOverlay(Gtk.Window):
         self.flowbox.set_column_spacing(26)
         self.flowbox.set_row_spacing(26)
         self.flowbox.set_max_children_per_line(6)
-        self.flowbox.set_min_children_per_line(4)
+        self.flowbox.set_min_children_per_line(6)
         self.flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
         self.flowbox.set_homogeneous(True)
         self.scroll.add(self.flowbox)
@@ -241,8 +250,45 @@ class AppGridOverlay(Gtk.Window):
         self.app_items = []
         self.load_applications()
 
+    def on_smooth_scroll(self, widget, event):
+        has_deltas, dx, dy = event.get_scroll_deltas()
+        max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
+
+        if has_deltas:
+            # Smooth high-precision touchpad swipe
+            self.target_y += dy * 60.0
+        else:
+            # Discrete wheel scroll
+            if event.direction == Gdk.ScrollDirection.UP:
+                self.target_y -= 110.0
+            elif event.direction == Gdk.ScrollDirection.DOWN:
+                self.target_y += 110.0
+
+        self.target_y = max(0.0, min(max_y, self.target_y))
+
+        if not self.is_animating_scroll:
+            self.is_animating_scroll = True
+            self.add_tick_callback(self.on_scroll_physics_tick)
+        return True
+
+    def on_scroll_physics_tick(self, widget, frame_clock):
+        diff = self.target_y - self.current_y
+        if abs(diff) < 0.5:
+            self.current_y = self.target_y
+            self.vadj.set_value(self.current_y)
+            self.is_animating_scroll = False
+            return False
+
+        # 120Hz smooth exponential damping lerp
+        self.current_y += diff * 0.22
+        self.vadj.set_value(self.current_y)
+        return True
+
     def on_category_clicked(self, button, cat_name):
         self.active_category = cat_name
+        self.target_y = 0.0
+        self.current_y = 0.0
+        self.vadj.set_value(0.0)
         for cat, btn in self.cat_buttons.items():
             ctx = btn.get_style_context()
             if cat == cat_name:
@@ -252,6 +298,9 @@ class AppGridOverlay(Gtk.Window):
         self.filter_apps()
 
     def on_search_changed(self, entry):
+        self.target_y = 0.0
+        self.current_y = 0.0
+        self.vadj.set_value(0.0)
         self.filter_apps()
 
     def filter_apps(self):
@@ -431,18 +480,17 @@ class AppGridOverlay(Gtk.Window):
             border: 1.5px solid transparent;
             border-radius: 22px;
             padding: 14px 10px;
-            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: background-color 0.12s ease, border-color 0.12s ease;
         }}
 
         #app-tile:hover, flowboxchild:selected #app-tile {{
-            background-color: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.28);
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.40);
+            background-color: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.30);
         }}
 
         #app-tile:active {{
-            background-color: rgba(255, 255, 255, 0.26);
-            border-color: rgba(255, 255, 255, 0.45);
+            background-color: rgba(255, 255, 255, 0.28);
+            border-color: rgba(255, 255, 255, 0.50);
         }}
 
         #app-label {{
