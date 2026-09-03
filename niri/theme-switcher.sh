@@ -2,8 +2,12 @@
 
 THEMES_DIR="$HOME/.config/themes"
 
-# 1. Select theme via fuzzel
-CHOSEN_THEME=$(ls "$THEMES_DIR" | fuzzel --dmenu -p "Select Theme: ")
+# 1. Select theme (via CLI argument or interactive fuzzel)
+if [ -n "$1" ] && [ -d "$THEMES_DIR/$1" ]; then
+    CHOSEN_THEME="$1"
+else
+    CHOSEN_THEME=$(ls "$THEMES_DIR" | fuzzel --dmenu -p "Select Theme: ")
+fi
 
 if [ -z "$CHOSEN_THEME" ]; then
     exit 0

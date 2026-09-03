@@ -311,4 +311,9 @@ include "current-theme.kdl"
 
 output "eDP-1" {
     mode "1920x1080@120.213"
+
+    scale 1.0
+
+
+
 }

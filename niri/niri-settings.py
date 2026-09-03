@@ -3,6 +3,7 @@ import os
 import sys
 import glob
 import json
+import re
 import subprocess
 import threading
 
@@ -28,6 +29,52 @@ def run_cmd(cmd):
 
 def async_cmd(cmd):
     threading.Thread(target=lambda: subprocess.run(cmd, shell=True), daemon=True).start()
+
+def update_niri_output(output_name="eDP-1", mode=None, scale=None, vrr=None):
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            content = f.read()
+
+        pat = rf'output\s+\"{output_name}\"\s*\{{([^}}]*)\}}'
+        match = re.search(pat, content)
+        if match:
+            body = match.group(1)
+            if mode:
+                if re.search(r'mode\s+\"[^\"]+\"', body):
+                    body = re.sub(r'mode\s+\"[^\"]+\"', f'mode \"{mode}\"', body)
+                else:
+                    body += f'\n    mode \"{mode}\"'
+            if scale is not None:
+                if re.search(r'scale\s+[\d.]+', body):
+                    body = re.sub(r'scale\s+[\d.]+', f'scale {scale}', body)
+                else:
+                    body += f'\n    scale {scale}'
+            if vrr is not None:
+                if vrr:
+                    if 'variable-refresh-rate' not in body:
+                        body += '\n    variable-refresh-rate'
+                else:
+                    body = re.sub(r'\s*variable-refresh-rate(\s+on|\s+off)?', '', body)
+            new_content = re.sub(pat, f'output \"{output_name}\" {{{body}\n}}', content)
+        else:
+            new_block = f'\noutput \"{output_name}\" {{\n'
+            if mode: new_block += f'    mode \"{mode}\"\n'
+            if scale: new_block += f'    scale {scale}\n'
+            if vrr: new_block += '    variable-refresh-rate\n'
+            new_block += '}\n'
+            new_content = content + new_block
+
+        with open(CONFIG_KDL_PATH, "w") as f:
+            f.write(new_content)
+
+        dotfile_kdl = "/home/sreyas/dotfile/niri/config.kdl"
+        if os.path.exists(dotfile_kdl):
+            with open(dotfile_kdl, "w") as f:
+                f.write(new_content)
+
+        subprocess.run(["niri", "msg", "action", "load-config-file"])
+    except Exception as e:
+        print(f"Error updating niri output: {e}")
 
 
 class SettingsCard(Gtk.Box):
@@ -271,34 +318,45 @@ class NiriSettingsApp(Gtk.Window):
         mode_card = SettingsCard()
         vbox.pack_start(mode_card, False, False, 0)
 
-        # Refresh Rate Combo
+        # Refresh Rate
+        modes = output_data.get("modes", [])
+        rates = sorted(list(set(round(m.get("refresh_rate", 120213) / 1000, 2) for m in modes)), reverse=True)
+        if not rates:
+            rates = [120.21]
+
         rate_combo = Gtk.ComboBoxText()
-        rate_combo.append("120", "120.21 Hz (High Refresh / Ultra Smooth)")
-        rate_combo.append("60", "60.00 Hz (Power Saving / Balanced)")
-        rate_combo.set_active_id("120")
+        for r in rates:
+            rate_combo.append(str(r), f"{r} Hz (Native Timing)")
+        rate_combo.set_active_id(str(rates[0]))
 
         def on_rate_changed(combo):
             val = combo.get_active_id()
-            if val == "120":
-                async_cmd("sed -i 's/@60.000/@120.000/g' ~/.config/niri/config.kdl && niri msg action load-config-file")
-            else:
-                async_cmd("sed -i 's/@120.000/@60.000/g' ~/.config/niri/config.kdl && niri msg action load-config-file")
+            if val:
+                update_niri_output("eDP-1", mode=f"1920x1080@{val}")
 
         rate_combo.connect("changed", on_rate_changed)
 
         mode_card.add_row(create_setting_row(
             "preferences-desktop-display",
             "Display Refresh Rate",
-            "Select panel refresh frequency for maximum smoothness or battery life",
+            f"Hardware panel timing is {rates[0]} Hz. Use VRR below for dynamic 60-120Hz power saving.",
             rate_combo
         ))
 
         # Display Scale
+        cur_scale = str(output_data.get("logical", {}).get("scale", 1.0))
         scale_combo = Gtk.ComboBoxText()
         scale_combo.append("1.0", "100% (Native 1.0x)")
         scale_combo.append("1.25", "125% (Comfortable 1.25x)")
         scale_combo.append("1.5", "150% (High DPI 1.5x)")
-        scale_combo.set_active_id("1.0")
+        scale_combo.set_active_id(cur_scale if cur_scale in ["1.0", "1.25", "1.5"] else "1.0")
+
+        def on_scale_changed(combo):
+            val = combo.get_active_id()
+            if val:
+                update_niri_output("eDP-1", scale=val)
+
+        scale_combo.connect("changed", on_scale_changed)
 
         mode_card.add_row(create_setting_row(
             "zoom-fit-best",
@@ -307,13 +365,20 @@ class NiriSettingsApp(Gtk.Window):
             scale_combo
         ))
 
-        # VRR / Adaptive Sync
+        # VRR / Adaptive Sync (AMD FreeSync)
         vrr_switch = Gtk.Switch()
         vrr_switch.set_active(output_data.get("vrr_enabled", False))
+
+        def on_vrr_toggled(sw, state):
+            update_niri_output("eDP-1", vrr=state)
+            return False
+
+        vrr_switch.connect("state-set", on_vrr_toggled)
+
         mode_card.add_row(create_setting_row(
             "applications-games",
-            "Variable Refresh Rate (VRR)",
-            "Dynamic refresh rate adaptation (AMD FreeSync)",
+            "Variable Refresh Rate (VRR / FreeSync)",
+            "Dynamically scales refresh rate between 60 Hz (idle) and 120 Hz (motion) to save battery",
             vrr_switch
         ))
 
@@ -389,7 +454,7 @@ class NiriSettingsApp(Gtk.Window):
                         b = Gtk.Button()
                         b.set_name("gallery-btn")
                         b.set_image(Gtk.Image.new_from_pixbuf(pixbuf))
-                        b.connect("clicked", lambda _, path=p: async_cmd(f"bash /home/sreyas/.config/niri/wallpaper-picker.sh --apply '{path}'"))
+                        b.connect("clicked", lambda _, path=p: async_cmd(f"bash /home/sreyas/.config/niri/wallpaper-picker.sh '{path}'"))
                         wall_flow.add(b)
                         b.show_all()
                         return False
@@ -406,7 +471,7 @@ class NiriSettingsApp(Gtk.Window):
         themes = ["everforest", "catppuccin-mocha", "gruvbox-material", "nord", "rose-pine", "tokyonight"]
         for t in themes:
             t_btn = Gtk.Button(label="Apply")
-            t_btn.connect("clicked", lambda _, th=t: async_cmd(f"ln -sf ~/.config/themes/{th}/waybar.css ~/.config/waybar/current-theme.css && killall waybar && waybar &"))
+            t_btn.connect("clicked", lambda _, th=t: async_cmd(f"bash /home/sreyas/.config/niri/theme-switcher.sh {th}"))
             theme_card.add_row(create_setting_row(
                 "preferences-desktop-theme",
                 t.replace("-", " ").title(),
@@ -427,7 +492,7 @@ class NiriSettingsApp(Gtk.Window):
 
         # Dock restart / status
         restart_btn = Gtk.Button(label="Restart Dock")
-        restart_btn.connect("clicked", lambda *_: async_cmd("pkill -f macos-dock.py; /usr/bin/python3 ~/.config/niri/macos-dock.py &"))
+        restart_btn.connect("clicked", lambda *_: async_cmd("pkill -9 -f macos-dock.py; rm -f /tmp/macos_dock.pid; sleep 0.2; niri msg action spawn -- /usr/bin/python3 /home/sreyas/.config/niri/macos-dock.py"))
         dock_card.add_row(create_setting_row(
             "user-desktop",
             "Bottom macOS Dock",
