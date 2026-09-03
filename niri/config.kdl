@@ -2,7 +2,7 @@
     keyboard { xkb {}; numlock; }
     touchpad {
         tap
-        natural-scroll
+natural-scroll
         dwt
         accel-speed 0.2
         scroll-factor 1.0

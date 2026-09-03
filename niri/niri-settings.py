@@ -131,18 +131,23 @@ def update_niri_input(tap=None, natural_touchpad=None, dwt=None, accel_touchpad=
 
 def update_niri_layout(gaps=None, border_width=None):
     try:
-        with open(CONFIG_KDL_PATH, "r") as f:
-            text = f.read()
-
         if gaps is not None:
+            with open(CONFIG_KDL_PATH, "r") as f:
+                text = f.read()
             text = re.sub(r'gaps\s+\d+', f'gaps {int(gaps)}', text)
+            with open(CONFIG_KDL_PATH, "w") as f:
+                f.write(text)
+            sync_kdl_to_dotfile(text)
 
         if border_width is not None:
-            text = re.sub(r'width\s+\d+;', f'width {int(border_width)};', text)
+            theme_kdl = "/home/sreyas/.config/niri/current-theme.kdl"
+            if os.path.exists(theme_kdl):
+                with open(theme_kdl, "r") as f:
+                    t_text = f.read()
+                t_text = re.sub(r'width\s+\d+', f'width {int(border_width)}', t_text)
+                with open(theme_kdl, "w") as f:
+                    f.write(t_text)
 
-        with open(CONFIG_KDL_PATH, "w") as f:
-            f.write(text)
-        sync_kdl_to_dotfile(text)
         subprocess.run(["niri", "msg", "action", "load-config-file"])
     except Exception as e:
         print(f"Error updating layout: {e}")
@@ -171,8 +176,13 @@ def get_niri_input_state():
         state["ffm"] = "focus-follows-mouse" in content
         m = re.search(r'gaps\s+(\d+)', content)
         if m: state["gaps"] = int(m.group(1))
-        m = re.search(r'width\s+(\d+);', content)
-        if m: state["border_width"] = int(m.group(1))
+
+        theme_kdl = "/home/sreyas/.config/niri/current-theme.kdl"
+        if os.path.exists(theme_kdl):
+            with open(theme_kdl, "r") as f:
+                t_content = f.read()
+            m = re.search(r'width\s+(\d+)', t_content)
+            if m: state["border_width"] = int(m.group(1))
     except Exception:
         pass
     return state
