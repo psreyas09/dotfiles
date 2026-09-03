@@ -69,6 +69,7 @@ alias update='sudo dnf upgrade -y '
 # --- Custom Desktop Ricing Aliases & Sync Functions ---
 alias theme='bash ~/.config/niri/theme-switcher.sh'
 alias wall='bash ~/.config/niri/wallpaper-picker.sh'
+alias settings='/usr/bin/python3 ~/.config/niri/niri-settings.py'
 alias fetch='fastfetch'
 alias sys='fastfetch'
 alias viz='cava'

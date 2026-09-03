@@ -9,6 +9,7 @@ Personal high-performance, dynamic-themed dotfiles built around the **[Niri](htt
 | Component | Tool / Engine | Description |
 |---|---|---|
 | **Compositor** | [Niri](https://github.com/YaLTeR/niri) | Scrollable Tiling Wayland Compositor |
+| **Desktop Settings App** | Custom GTK3 (`niri-settings.py`) | Comprehensive control center with macOS UI/UX for display, wallpaper, dock, audio, network & shortcuts |
 | **macOS Bottom Dock** | Custom GTK Layer Shell (`macos-dock.py`) | Centered floating glass dock with 120 FPS slide auto-hide, active app tracking, glowing running indicators, overview integration & Trash |
 | **App Switcher HUD** | Custom GTK Layer Shell (`window-switcher.py`) | macOS-authentic `Super+Tab` / `Alt+Tab` switcher with 64px icons, frosted squircle plate, release-to-switch & `Q` to quit |
 | **Quick Settings Popups** | Custom GTK Layer Shell | Interactive desktop menus for Wi-Fi (`wifi-popup.py`), Bluetooth (`bluetooth-popup.py`), and Media Player with Material You wavy seekbar (`media-popup.py`) |
@@ -38,6 +39,7 @@ Personal high-performance, dynamic-themed dotfiles built around the **[Niri](htt
 | `Mod + ` ` (grave / tilde) | Cycle backward through **macOS App Switcher** (macOS native shortcut) |
 | `Mod + Return` | Open terminal ([Kitty](file:///home/sreyas/.config/kitty/kitty.conf)) |
 | `Mod + Space` | Open application launcher ([Fuzzel](file:///home/sreyas/.config/fuzzel/fuzzel.ini)) |
+| `Mod + , (comma)` | Open **Niri Settings Control Center** |
 | `Mod + D` | Toggle desktop overview (auto-reveals dock) |
 | `Mod + W` | Open dynamic wallpaper picker script |
 | `Mod + Shift + T` | Open desktop theme switcher toast menu |
@@ -63,6 +65,11 @@ Personal high-performance, dynamic-themed dotfiles built around the **[Niri](htt
 ---
 
 ## ✨ Features Spotlight
+
+### ⚙️ Niri Desktop Settings Control Center
+* **Comprehensive Modern GUI**: Built with GTK3 and styled with Apple/GNOME card groups and Wallust dynamic palette integration.
+* **9 Dedicated Panels**: Display & Monitor (refresh rate, resolution, VRR), Appearance & Wallpapers (live gallery, Wallust themes), macOS Dock & HUD controls, Master Audio & Microphone gain, Wi-Fi & Bluetooth toggles, Screen & Keyboard Brightness, Battery health & Auto-lock, searchable Shortcuts Cheat Sheet, and System specs.
+* **Universal Shortcut**: Launch anytime with <kbd>Mod</kbd>+<kbd>,</kbd> (comma) or by typing `settings` in the terminal.
 
 ### 🍎 macOS-Style Bottom Dock
 * **Intelligent Auto-Hide**: Slides down out of the way when windows are active on the workspace; stays visible on empty desktop workspaces.
@@ -91,6 +98,7 @@ Personal high-performance, dynamic-themed dotfiles built around the **[Niri](htt
 |---|---|
 | `theme` | Open interactive desktop theme preset selector |
 | `wall` | Open wallpaper selector (Static Fuzzel / sxiv) |
+| `settings` | Open **Niri Settings Control Center** |
 | `fetch` / `sys` | Run Fastfetch Survey Corps system overview |
 | `viz` | Launch CAVA 60fps audio visualizer |
 | `lock` | Lock screen with blurred screenshot |

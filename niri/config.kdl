@@ -206,6 +206,7 @@ binds {
     Mod+Space { spawn "fuzzel"; }
     Mod+B { spawn "firefox"; }
     Mod+N { spawn "nautilus"; }
+    Mod+Comma { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/niri-settings.py"; }
     Mod+Q { close-window; }
 
     // --- Window Controls ---

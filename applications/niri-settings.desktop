@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Niri Settings
+Comment=Control center and settings for Niri Wayland desktop
+Exec=/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py
+Icon=preferences-system
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;GTK;
+StartupWMClass=niri-settings
+Keywords=Settings;Preferences;Display;Audio;Bluetooth;Wifi;Themes;Wallpaper;Niri;
