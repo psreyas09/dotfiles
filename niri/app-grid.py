@@ -223,9 +223,8 @@ class AppGridOverlay(Gtk.Window):
 
         # Smooth 120Hz Scrolling State
         self.vadj = self.scroll.get_vadjustment()
-        self.target_y = 0.0
-        self.current_y = 0.0
-        self.is_animating_scroll = False
+        self.wheel_target = 0.0
+        self.wheel_timer_id = None
         self.scroll.connect("scroll-event", self.on_smooth_scroll)
 
         # FlowBox for Multi-column Application Grid (6 columns centered)
@@ -255,39 +254,46 @@ class AppGridOverlay(Gtk.Window):
         max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
 
         if has_deltas:
-            # Smooth high-precision touchpad swipe
-            self.target_y += dy * 60.0
+            # Native Touchpad 120Hz subpixel scroll (0ms latency, perfectly 1:1)
+            if self.wheel_timer_id:
+                GLib.source_remove(self.wheel_timer_id)
+                self.wheel_timer_id = None
+            curr = self.vadj.get_value()
+            new_val = max(0.0, min(max_y, curr + dy * 38.0))
+            self.vadj.set_value(new_val)
+            self.wheel_target = new_val
+            return True
         else:
-            # Discrete wheel scroll
+            # Discrete mouse wheel: 120.8 FPS physics via 8ms timer
+            if not self.wheel_timer_id:
+                self.wheel_target = self.vadj.get_value()
             if event.direction == Gdk.ScrollDirection.UP:
-                self.target_y -= 110.0
+                self.wheel_target -= 130.0
             elif event.direction == Gdk.ScrollDirection.DOWN:
-                self.target_y += 110.0
+                self.wheel_target += 130.0
+            self.wheel_target = max(0.0, min(max_y, self.wheel_target))
 
-        self.target_y = max(0.0, min(max_y, self.target_y))
+            if not self.wheel_timer_id:
+                self.wheel_timer_id = GLib.timeout_add(8, self.on_wheel_tick)
+            return True
 
-        if not self.is_animating_scroll:
-            self.is_animating_scroll = True
-            self.add_tick_callback(self.on_scroll_physics_tick)
-        return True
-
-    def on_scroll_physics_tick(self, widget, frame_clock):
-        diff = self.target_y - self.current_y
-        if abs(diff) < 0.5:
-            self.current_y = self.target_y
-            self.vadj.set_value(self.current_y)
-            self.is_animating_scroll = False
+    def on_wheel_tick(self):
+        curr = self.vadj.get_value()
+        diff = self.wheel_target - curr
+        if abs(diff) < 0.6:
+            self.vadj.set_value(self.wheel_target)
+            self.wheel_timer_id = None
             return False
-
-        # 120Hz smooth exponential damping lerp
-        self.current_y += diff * 0.22
-        self.vadj.set_value(self.current_y)
+        # 120 FPS lerp interpolation
+        self.vadj.set_value(curr + diff * 0.28)
         return True
 
     def on_category_clicked(self, button, cat_name):
         self.active_category = cat_name
-        self.target_y = 0.0
-        self.current_y = 0.0
+        if self.wheel_timer_id:
+            GLib.source_remove(self.wheel_timer_id)
+            self.wheel_timer_id = None
+        self.wheel_target = 0.0
         self.vadj.set_value(0.0)
         for cat, btn in self.cat_buttons.items():
             ctx = btn.get_style_context()
@@ -298,8 +304,10 @@ class AppGridOverlay(Gtk.Window):
         self.filter_apps()
 
     def on_search_changed(self, entry):
-        self.target_y = 0.0
-        self.current_y = 0.0
+        if self.wheel_timer_id:
+            GLib.source_remove(self.wheel_timer_id)
+            self.wheel_timer_id = None
+        self.wheel_target = 0.0
         self.vadj.set_value(0.0)
         self.filter_apps()
 
@@ -373,16 +381,6 @@ class AppGridOverlay(Gtk.Window):
 
     def apply_css(self):
         css_provider = Gtk.CssProvider()
-        bg_rule = ""
-        if os.path.exists(BLURRED_WALL_PATH):
-            bg_rule = f"""
-            background-image: linear-gradient(rgba(10, 12, 16, 0.72), rgba(10, 12, 16, 0.82)), url('{BLURRED_WALL_PATH}');
-            background-size: cover;
-            background-position: center;
-            """
-        else:
-            bg_rule = "background-color: rgba(12, 14, 20, 0.94);"
-
         css = f"""
         @import url('{THEME_CSS_PATH}');
 
@@ -392,7 +390,7 @@ class AppGridOverlay(Gtk.Window):
         }}
 
         #gnome-app-grid-window {{
-            {bg_rule}
+            background-color: alpha(@bg-color, 0.90);
         }}
 
         /* GNOME Centered Search Pill */
