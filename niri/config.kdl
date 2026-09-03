@@ -237,6 +237,7 @@ binds {
     // --- Terminal & Apps ---
     Mod+Return { spawn "kitty"; }
     Mod+Space { spawn "fuzzel"; }
+    Mod+A { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py"; }
     Mod+B { spawn "firefox"; }
     Mod+N { spawn "nautilus"; }
     Mod+Comma { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/niri-settings.py"; }

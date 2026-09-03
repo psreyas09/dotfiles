@@ -10,8 +10,9 @@
 
     "custom/launcher": {
         "format": "",
-        "on-click": "fuzzel",
-        "tooltip": false
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
+        "on-click-right": "fuzzel",
+        "tooltip": "All Applications"
     },
 
     "niri/workspaces": {
