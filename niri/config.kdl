@@ -80,7 +80,7 @@ window-rule {
 // --- Video Players & Media Viewers (Explicitly 100% OPAQUE - No Translucency) ---
 window-rule {
     match app-id=r#"mpv|vlc|totem|celluloid|clapper|haruna|smplayer|kodi|stremio|freetube|GnomeMpv"#
-    match title="^Picture-in-Picture$"
+    match title=r#"(?i)picture-?in-?picture"#
     opacity 1.0
 }
 
@@ -93,12 +93,21 @@ window-rule {
     opacity 1.0
 }
 
-// --- Floating Popups & Dialogs ---
+// --- Browser Picture-in-Picture & Google Meet PiP (Floating, 100% Opaque) ---
 window-rule {
-    match app-id=r#"google-chrome$"# title="^Picture-in-Picture$"
-    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
-    match app-id=r#"zen"# title="^Picture-in-Picture$"
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome.*|chromium.*|brave.*"# title=r#"(?i)picture-?in-?picture"#
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome.*|chromium.*|brave.*"# title=r#"(?i)^meet\.google\.com"#
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome.*|chromium.*|brave.*"# title=r#"^Google Meet$"#
     open-floating true
+    default-floating-position x=32 y=32 relative-to="bottom-right"
+    opacity 1.0
+}
+
+window-rule {
+    match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome.*|chromium.*|brave.*"# title=r#"^Meet\s*[-–—]"#
+    exclude title=r#"(Google Chrome|Zen Browser|Mozilla Firefox|Chromium|Brave)$"#
+    open-floating true
+    default-floating-position x=32 y=32 relative-to="bottom-right"
     opacity 1.0
 }
 
@@ -147,7 +156,7 @@ window-rule {
 // --- Web Browsers (Frosted Glass) ---
 window-rule {
     match app-id=r#"app\.zen_browser\.zen|zen|firefox|google-chrome|chromium|brave-browser|librewolf|floorp"#
-    exclude title="^Picture-in-Picture$"
+    exclude title=r#"(?i)picture-?in-?picture|meet\.google\.com|^google meet$"#
     opacity 0.93
 }
 
@@ -313,7 +322,5 @@ output "eDP-1" {
     mode "1920x1080@120.213"
 
     scale 1.0
-
-
 
 }
