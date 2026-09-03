@@ -112,16 +112,37 @@ window-rule {
 }
 
 window-rule {
-    match app-id="pavucontrol"
     match app-id="blueman-manager"
+    open-floating true
+    default-column-width { fixed 620; }
+    default-window-height { fixed 460; }
+    opacity 0.95
+}
+
+window-rule {
+    match app-id="pavucontrol"
+    open-floating true
+    default-column-width { fixed 680; }
+    default-window-height { fixed 500; }
+    opacity 0.95
+}
+
+window-rule {
     match app-id="nm-connection-editor"
+    open-floating true
+    default-column-width { fixed 580; }
+    default-window-height { fixed 460; }
+    opacity 0.95
+}
+
+window-rule {
     match app-id="org.gnome.FileRoller"
     match app-id="system-monitor"
     match app-id="niri-settings"
     match app-id="org.gnome.Settings"
     match app-id="gnome-control-center"
     open-floating true
-    opacity 0.92
+    opacity 0.95
 }
 
 // --- Terminal (Kitty / Alacritty / Foot / Wezterm) ---
