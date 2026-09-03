@@ -124,10 +124,25 @@ class NiriSettingsApp(Gtk.Window):
         self.stack.set_transition_duration(150)
         main_box.pack_start(self.stack, True, True, 0)
 
-        # Build Pages
-        self.build_pages()
+        # Page Caching & Lazy Loading
+        self.pages_built = {}
+        self.page_factories = {
+            "display": self.page_display,
+            "appearance": self.page_appearance,
+            "dock": self.page_dock,
+            "sound": self.page_sound,
+            "network": self.page_network,
+            "keyboard": self.page_keyboard,
+            "power": self.page_power,
+            "shortcuts": self.page_shortcuts,
+            "about": self.page_about,
+        }
 
-        # Select first tab by default
+        # Build Sidebar Navigation
+        self.build_sidebar()
+
+        # Build ONLY the initial page so startup takes < 50ms!
+        self.load_page("display")
         first_row = self.sidebar_list.get_row_at_index(0)
         if first_row:
             self.sidebar_list.select_row(first_row)
@@ -169,46 +184,31 @@ class NiriSettingsApp(Gtk.Window):
         row.add(box)
         self.sidebar_list.add(row)
 
+    def build_sidebar(self):
+        self.add_nav_item("display", "Display & Monitor", "video-display")
+        self.add_nav_item("appearance", "Appearance & Themes", "preferences-desktop-theme")
+        self.add_nav_item("dock", "Dock & Switcher", "user-desktop")
+        self.add_nav_item("sound", "Sound & Audio", "audio-volume-high")
+        self.add_nav_item("network", "Wi-Fi & Bluetooth", "network-wireless")
+        self.add_nav_item("keyboard", "Keyboard & Brightness", "input-keyboard")
+        self.add_nav_item("power", "Power & Screen Lock", "system-lock-screen")
+        self.add_nav_item("shortcuts", "Shortcuts Reference", "preferences-desktop-keyboard-shortcuts")
+        self.add_nav_item("about", "About System", "dialog-information")
+
     def on_nav_selected(self, listbox, row):
         if row and hasattr(row, "page_id"):
-            self.stack.set_visible_child_name(row.page_id)
+            page_id = row.page_id
+            self.load_page(page_id)
+            self.stack.set_visible_child_name(page_id)
 
-    def build_pages(self):
-        # 1. Display & Monitor
-        self.add_nav_item("display", "Display & Monitor", "video-display")
-        self.stack.add_named(self.page_display(), "display")
-
-        # 2. Appearance & Wallpaper
-        self.add_nav_item("appearance", "Appearance & Themes", "preferences-desktop-theme")
-        self.stack.add_named(self.page_appearance(), "appearance")
-
-        # 3. macOS Dock & HUD
-        self.add_nav_item("dock", "Dock & Switcher", "user-desktop")
-        self.stack.add_named(self.page_dock(), "dock")
-
-        # 4. Sound & Audio
-        self.add_nav_item("sound", "Sound & Audio", "audio-volume-high")
-        self.stack.add_named(self.page_sound(), "sound")
-
-        # 5. Network & Bluetooth
-        self.add_nav_item("network", "Wi-Fi & Bluetooth", "network-wireless")
-        self.stack.add_named(self.page_network(), "network")
-
-        # 6. Keyboard & Brightness
-        self.add_nav_item("keyboard", "Keyboard & Brightness", "input-keyboard")
-        self.stack.add_named(self.page_keyboard(), "keyboard")
-
-        # 7. Power & Screen Lock
-        self.add_nav_item("power", "Power & Screen Lock", "system-lock-screen")
-        self.stack.add_named(self.page_power(), "power")
-
-        # 8. Keybindings Guide
-        self.add_nav_item("shortcuts", "Shortcuts Reference", "preferences-desktop-keyboard-shortcuts")
-        self.stack.add_named(self.page_shortcuts(), "shortcuts")
-
-        # 9. About System
-        self.add_nav_item("about", "About System", "dialog-information")
-        self.stack.add_named(self.page_about(), "about")
+    def load_page(self, page_id):
+        if page_id not in self.pages_built:
+            factory = self.page_factories.get(page_id)
+            if factory:
+                widget = factory()
+                self.stack.add_named(widget, page_id)
+                widget.show_all()
+                self.pages_built[page_id] = widget
 
     def make_page_container(self, title, description=""):
         scroll = Gtk.ScrolledWindow()
@@ -380,16 +380,23 @@ class NiriSettingsApp(Gtk.Window):
         wall_flow.set_selection_mode(Gtk.SelectionMode.NONE)
         vbox.pack_start(wall_flow, False, False, 0)
 
-        for wfile in glob.glob(os.path.join(WALLPAPER_DIR, "*.jpg"))[:8]:
-            btn = Gtk.Button()
-            btn.set_name("gallery-btn")
-            try:
-                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(wfile, 120, 68, False)
-                btn.set_image(Gtk.Image.new_from_pixbuf(pb))
-                btn.connect("clicked", lambda _, p=wfile: async_cmd(f"bash /home/sreyas/.config/niri/wallpaper-picker.sh --apply '{p}'"))
-                wall_flow.add(btn)
-            except Exception:
-                pass
+        def load_gallery_bg():
+            wfiles = glob.glob(os.path.join(WALLPAPER_DIR, "*.jpg"))[:8]
+            for wfile in wfiles:
+                try:
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(wfile, 120, 68, False)
+                    def add_item(p=wfile, pixbuf=pb):
+                        b = Gtk.Button()
+                        b.set_name("gallery-btn")
+                        b.set_image(Gtk.Image.new_from_pixbuf(pixbuf))
+                        b.connect("clicked", lambda _, path=p: async_cmd(f"bash /home/sreyas/.config/niri/wallpaper-picker.sh --apply '{path}'"))
+                        wall_flow.add(b)
+                        b.show_all()
+                        return False
+                    GLib.idle_add(add_item)
+                except Exception:
+                    pass
+        threading.Thread(target=load_gallery_bg, daemon=True).start()
 
         # Desktop Theme Presets
         vbox.pack_start(Gtk.Label(label="DESKTOP THEME PROFILES", xalign=0, name="section-caption"), False, False, 0)
