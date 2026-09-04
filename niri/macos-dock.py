@@ -631,6 +631,10 @@ class MacOSDock(Gtk.Window):
         self.bouncing_apps = {}
         self.is_bouncing_animating = False
 
+        # Flowing wave hover animation state (0% idle CPU)
+        self.is_wave_animating = False
+        self.last_wave_time = None
+
         # Load pinned apps configuration
         self.pinned_apps = self.load_pinned_apps()
 
@@ -839,8 +843,14 @@ class MacOSDock(Gtk.Window):
         # macOS Frosted Glass Capsule
         self.card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.set_name("dock-card")
-        self.card.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.card.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
+        )
         self.card.connect("button-press-event", self.on_card_button_press)
+        self.card.connect("motion-notify-event", self.on_card_motion_notify)
+        self.card.connect("leave-notify-event", self.on_card_leave_notify)
         self.dock_container.pack_start(self.card, False, False, 0)
 
         # 1. Pinned Apps
@@ -939,11 +949,14 @@ class MacOSDock(Gtk.Window):
             except Exception:
                 pass
 
-        # High-performance Cairo DrawingArea for 120Hz smooth jumping animation
+        # High-performance Cairo DrawingArea for 120Hz smooth jumping animation & flowing wave
         da = Gtk.DrawingArea()
-        da.set_size_request(48, 56)
+        da.set_size_request(48, 60)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
+        da.wave_lift = 0.0
+        da.target_lift = 0.0
+        da.wave_vel = 0.0
         da._pb = pb
         da.connect("draw", self.on_icon_draw)
         vbox.pack_start(da, False, False, 0)
@@ -954,15 +967,18 @@ class MacOSDock(Gtk.Window):
         dot.get_style_context().add_class("inactive")
         vbox.pack_start(dot, False, False, 0)
 
-        # Event handling: left-click (clicked), right-click (button 3), middle-click (button 2), drag & reorder
+        # Event handling: left-click (clicked), right-click (button 3), middle-click (button 2), drag & reorder, hover wave
         btn.add_events(
             Gdk.EventMask.BUTTON_PRESS_MASK
             | Gdk.EventMask.BUTTON_RELEASE_MASK
             | Gdk.EventMask.POINTER_MOTION_MASK
+            | Gdk.EventMask.ENTER_NOTIFY_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
         )
         btn.connect("button-press-event", self.on_item_button_press, item, is_dynamic, win_id)
         btn.connect("button-release-event", self.on_item_button_release, item, is_dynamic)
         btn.connect("motion-notify-event", self.on_item_motion_notify, item, is_dynamic)
+        btn.connect("enter-notify-event", self.on_item_enter_notify, item, is_dynamic)
         btn.connect("clicked", self.on_item_clicked, item, win_id)
 
         btn._dot = dot
@@ -980,9 +996,12 @@ class MacOSDock(Gtk.Window):
         pb_w = pb.get_width()
         x = max(0, (w - pb_w) // 2)
 
-        # Idle position is at y = 12, leaving 12px headroom at the top for the jump
+        # Headroom: resting position is at y = 15.0 (height is 60px, icon is 44px)
+        # Leaving 15px headroom at top for snappy jump and flowing wave
         jump = getattr(widget, "jump_y", 0.0)
-        y = 12.0 - jump
+        wave = getattr(widget, "wave_lift", 0.0)
+        total_lift = min(14.0, jump + wave)
+        y = 15.0 - total_lift
 
         Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
         cr.paint()
@@ -1009,10 +1028,27 @@ class MacOSDock(Gtk.Window):
             return False
         return False
 
+    def on_item_enter_notify(self, btn, event, item, is_dynamic):
+        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
+            return False
+        coords = btn.translate_coordinates(self.card, event.x, event.y)
+        if coords:
+            da = getattr(btn, "_da", None)
+            if da and getattr(da, "wave_lift", 0.0) < 1.0:
+                da.wave_vel = 55.0  # snappy initial jump pop!
+            self.update_hover_wave(coords[0], coords[1])
+        return False
+
     def on_item_motion_notify(self, btn, event, item, is_dynamic):
         if not self.drag_data:
+            coords = btn.translate_coordinates(self.card, event.x, event.y)
+            if coords:
+                self.update_hover_wave(coords[0], coords[1])
             return False
         if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
+            coords = btn.translate_coordinates(self.card, event.x, event.y)
+            if coords:
+                self.update_hover_wave(coords[0], coords[1])
             return False
 
         dx = abs(event.x_root - self.drag_data["start_x"])
@@ -1021,8 +1057,12 @@ class MacOSDock(Gtk.Window):
         if not self.drag_data["is_dragging"]:
             if dx > 8 or dy > 8:
                 self.drag_data["is_dragging"] = True
+                self.clear_hover_wave()
                 btn.get_style_context().add_class("dragging")
             else:
+                coords = btn.translate_coordinates(self.card, event.x, event.y)
+                if coords:
+                    self.update_hover_wave(coords[0], coords[1])
                 return False
 
         # Live reordering during drag
@@ -1206,6 +1246,145 @@ class MacOSDock(Gtk.Window):
             self.is_bouncing_animating = False
             return False
         return True
+
+    # --- Flowing Wave & Hover Jump Physics (macOS Style, 0% Idle CPU) ---
+    def get_all_icon_buttons(self):
+        buttons = []
+        if hasattr(self, "pinned_box"):
+            buttons.extend(self.pinned_box.get_children())
+        if hasattr(self, "dynamic_box"):
+            buttons.extend(self.dynamic_box.get_children())
+        if hasattr(self, "trash_widget") and self.trash_widget:
+            buttons.append(self.trash_widget)
+        return [b for b in buttons if hasattr(b, "_da")]
+
+    def start_wave_animation(self):
+        if not self.is_wave_animating:
+            self.is_wave_animating = True
+            self.last_wave_time = None
+            self.add_tick_callback(self.on_wave_tick)
+
+    def update_hover_wave(self, mouse_card_x, mouse_card_y):
+        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
+            return
+
+        WAVE_RADIUS = 110.0
+        MAX_HOVER_LIFT = 10.0
+
+        buttons = self.get_all_icon_buttons()
+        any_active = False
+
+        for btn in buttons:
+            da = getattr(btn, "_da", None)
+            if not da:
+                continue
+            coords = btn.translate_coordinates(self.card, 0, 0)
+            if not coords:
+                continue
+            alloc = btn.get_allocation()
+            btn_w = alloc.width if alloc.width > 0 else 48.0
+            center_x = coords[0] + btn_w / 2.0
+            dist = abs(mouse_card_x - center_x)
+
+            if dist < WAVE_RADIUS:
+                target = MAX_HOVER_LIFT * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
+            else:
+                target = 0.0
+
+            # If icon was completely at rest and now targeted, give snappy initial jump pop!
+            current_target = getattr(da, "target_lift", 0.0)
+            current_pos = getattr(da, "wave_lift", 0.0)
+            if target > 2.0 and current_target < 0.2 and current_pos < 1.0:
+                da.wave_vel = 55.0
+
+            da.target_lift = target
+            if target > 0.0 or current_pos > 0.05 or abs(getattr(da, "wave_vel", 0.0)) > 0.5:
+                any_active = True
+
+        if any_active:
+            self.start_wave_animation()
+
+    def clear_hover_wave(self):
+        buttons = self.get_all_icon_buttons()
+        any_to_lower = False
+        for btn in buttons:
+            da = getattr(btn, "_da", None)
+            if da:
+                da.target_lift = 0.0
+                if getattr(da, "wave_lift", 0.0) > 0.05 or abs(getattr(da, "wave_vel", 0.0)) > 0.5:
+                    any_to_lower = True
+        if any_to_lower:
+            self.start_wave_animation()
+
+    def on_wave_tick(self, widget, frame_clock):
+        now = time.time()
+        if self.last_wave_time is None:
+            dt = 0.016
+        else:
+            dt = min(0.033, max(0.001, now - self.last_wave_time))
+        self.last_wave_time = now
+
+        STIFFNESS = 320.0
+        DAMPING = 26.0
+
+        buttons = self.get_all_icon_buttons()
+        any_active = False
+
+        for btn in buttons:
+            da = getattr(btn, "_da", None)
+            if not da:
+                continue
+            pos = getattr(da, "wave_lift", 0.0)
+            vel = getattr(da, "wave_vel", 0.0)
+            target = getattr(da, "target_lift", 0.0)
+
+            if abs(target - pos) > 0.05 or abs(vel) > 0.5:
+                any_active = True
+                force = (target - pos) * STIFFNESS - vel * DAMPING
+                vel += force * dt
+                pos += vel * dt
+                if pos < 0.0:
+                    pos = 0.0
+                    vel = 0.0
+                da.wave_lift = pos
+                da.wave_vel = vel
+                da.queue_draw()
+            elif pos != target:
+                da.wave_lift = target
+                da.wave_vel = 0.0
+                da.queue_draw()
+
+        if not any_active:
+            all_zero = all(getattr(btn._da, "target_lift", 0.0) == 0.0 for btn in buttons if hasattr(btn, "_da"))
+            if all_zero:
+                for btn in buttons:
+                    if hasattr(btn, "_da"):
+                        btn._da.wave_lift = 0.0
+                        btn._da.wave_vel = 0.0
+                        btn._da.target_lift = 0.0
+                        btn._da.queue_draw()
+                self.is_wave_animating = False
+                self.last_wave_time = None
+                return False
+            else:
+                self.is_wave_animating = False
+                self.last_wave_time = None
+                return False
+
+        return True
+
+    def on_card_motion_notify(self, widget, event):
+        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
+            return False
+        coords = widget.translate_coordinates(self.card, event.x, event.y)
+        if coords:
+            self.update_hover_wave(coords[0], coords[1])
+        return False
+
+    def on_card_leave_notify(self, widget, event):
+        if event.detail != Gdk.NotifyType.INFERIOR:
+            self.clear_hover_wave()
+        return False
 
     # --- Windows & Action Discovery ---
     def matches_item(self, item, w):
@@ -1654,11 +1833,24 @@ class MacOSDock(Gtk.Window):
         if self.leave_timer_id:
             GLib.source_remove(self.leave_timer_id)
             self.leave_timer_id = None
+
+        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
+            return False
+
+        coords = widget.translate_coordinates(self.card, event.x, event.y)
+        if coords:
+            card_x, card_y = coords
+            alloc = self.card.get_allocation()
+            if -15 <= card_x <= alloc.width + 15 and -10 <= card_y <= alloc.height + 10:
+                self.update_hover_wave(card_x, card_y)
+            else:
+                self.clear_hover_wave()
         return False
 
     def on_leave_notify(self, widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
+        self.clear_hover_wave()
         if self.is_menu_open:
             return False
         if self.leave_timer_id:
@@ -1670,6 +1862,7 @@ class MacOSDock(Gtk.Window):
     def _on_delayed_leave(self):
         if self.is_menu_open:
             return False
+        self.clear_hover_wave()
         self.is_mouse_over = False
         self.leave_timer_id = None
         self.request_animation()
@@ -1950,7 +2143,7 @@ class MacOSDock(Gtk.Window):
 
         #dock-item:hover,
         #dock-item:focus:hover {{
-            background-color: rgba(255, 255, 255, 0.18);
+            background-color: rgba(255, 255, 255, 0.12);
         }}
 
         #dock-item.dragging {{
