@@ -14,9 +14,7 @@ is_recording() {
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             return 0
         fi
-    fi
-    if pgrep -x wl-screenrec >/dev/null 2>&1; then
-        return 0
+        rm -f "$PID_FILE" "$INFO_FILE" 2>/dev/null
     fi
     return 1
 }
