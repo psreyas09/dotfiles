@@ -9,6 +9,8 @@
 configuration {
     modi: "drun";
     show-icons: true;
+    icon-theme: "Adwaita";
+    application-fallback-icon: "application-x-executable";
     display-drun: "";
     drun-display-format: "{name}";
     hover-select: true;
@@ -133,7 +135,7 @@ element alternate.active {
 }
 
 element-icon {
-    size: 72px;
+    size: 64px;
     horizontal-align: 0.5;
     vertical-align: 0.5;
     background-color: transparent;

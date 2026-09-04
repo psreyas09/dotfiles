@@ -128,9 +128,37 @@ def format_app_name(app_id, title=""):
 
 def get_app_icon_pixbuf(app_id, title="", size=64):
     theme = Gtk.IconTheme.get_default()
+    aid = (app_id or "").lower()
+
+    # 1. Direct DesktopAppInfo resolution
+    desktop_cands = [
+        f"{app_id}.desktop" if app_id else "",
+        f"{aid}.desktop" if aid else "",
+        "google-chrome.desktop" if "chrome" in aid else "",
+        "com.google.Chrome.desktop" if "chrome" in aid else "",
+        "code.desktop" if "code" in aid else "",
+        "discord.desktop" if "discord" in aid else "",
+        "com.spotify.Client.desktop" if "spotify" in aid else "",
+        "steam.desktop" if "steam" in aid else "",
+    ]
+    for d in desktop_cands:
+        if not d:
+            continue
+        try:
+            dinfo = Gio.DesktopAppInfo.new(d)
+            if dinfo and dinfo.get_icon():
+                gicon = dinfo.get_icon()
+                info = theme.lookup_by_gicon(gicon, size, 0)
+                if info:
+                    pb = info.load_icon()
+                    if pb:
+                        return pb
+        except Exception:
+            pass
+
+    # 2. Candidate icon names
     candidates = []
     if app_id:
-        aid = app_id.lower()
         candidates.append(app_id)
         candidates.append(aid)
         candidates.append(app_id.split(".")[-1])
@@ -145,6 +173,18 @@ def get_app_icon_pixbuf(app_id, title="", size=64):
             candidates.extend(["org.gnome.Nautilus", "system-file-manager"])
         if "kitty" in aid:
             candidates.extend(["kitty", "utilities-terminal"])
+        if "code" in aid:
+            candidates.extend(["vscode", "/usr/share/pixmaps/vscode.png", "com.visualstudio.code", "code"])
+        if "chrome" in aid or "chromium" in aid:
+            candidates.extend(["google-chrome", "google-chrome-stable", "com.google.Chrome", "chromium", "chromium-browser"])
+        if "discord" in aid or "vesktop" in aid:
+            candidates.extend(["discord", "vesktop", "com.discordapp.Discord"])
+        if "spotify" in aid:
+            candidates.extend(["com.spotify.Client", "spotify"])
+        if "steam" in aid:
+            candidates.extend(["steam", "com.valvesoftware.Steam"])
+        if "lutris" in aid:
+            candidates.extend(["net.lutris.Lutris", "lutris"])
 
     if title:
         candidates.append(title.lower().split()[0])
@@ -152,6 +192,20 @@ def get_app_icon_pixbuf(app_id, title="", size=64):
     candidates.extend(["application-x-executable", "preferences-system-windows", "window", "system-run"])
 
     for c in candidates:
+        if not c:
+            continue
+        if os.path.exists(c):
+            try:
+                return GdkPixbuf.Pixbuf.new_from_file_at_scale(c, size, size, True)
+            except Exception:
+                pass
+        for ext in [".png", ".svg"]:
+            pixmap = f"/usr/share/pixmaps/{c}{ext}"
+            if os.path.exists(pixmap):
+                try:
+                    return GdkPixbuf.Pixbuf.new_from_file_at_scale(pixmap, size, size, True)
+                except Exception:
+                    pass
         if theme.has_icon(c):
             try:
                 return theme.load_icon(c, size, Gtk.IconLookupFlags.FORCE_SIZE)
