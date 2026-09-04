@@ -1593,8 +1593,7 @@ class NiriSettingsApp(Gtk.Window):
         mode_combo = Gtk.ComboBoxText()
         mode_combo.append("hybrid", "Hybrid (On-Demand NVIDIA PRIME)")
         mode_combo.append("integrated", "Integrated (iGPU Only • Maximum Battery)")
-        mode_combo.append("nvidia", "NVIDIA (Dedicated Only • High Performance)")
-        mode_combo.set_active_id(cur_mode if cur_mode in ["hybrid", "integrated", "nvidia"] else "hybrid")
+        mode_combo.set_active_id(cur_mode if cur_mode in ["hybrid", "integrated"] else "hybrid")
 
         apply_btn = Gtk.Button(label="Apply Mode...")
         apply_btn.set_sensitive(False)
@@ -1620,7 +1619,7 @@ class NiriSettingsApp(Gtk.Window):
         gpu_card.add_row(create_setting_row(
             "applications-games",
             "Switch Operating Graphics Mode",
-            "Switch between Hybrid (PRIME on-demand), Integrated (NVIDIA disabled to maximize battery), or Dedicated NVIDIA",
+            "Switch between Hybrid (PRIME on-demand) or Integrated (NVIDIA disabled to maximize battery life)",
             mode_box
         ))
 
