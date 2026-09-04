@@ -1062,7 +1062,7 @@ class MacOSDock(Gtk.Window):
         # High-performance Cairo DrawingArea for 120Hz smooth magnification & flowing wave
         da = Gtk.DrawingArea()
         da.set_has_window(False)
-        da.set_size_request(48, 70)
+        da.set_size_request(48, 60)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
         da.current_scale = 1.0
@@ -1110,14 +1110,14 @@ class MacOSDock(Gtk.Window):
             return False
         alloc = widget.get_allocation()
         w = alloc.width if alloc.width > 0 else 48
-        h = alloc.height if alloc.height > 0 else 70
+        h = alloc.height if alloc.height > 0 else 60
 
         scale = getattr(widget, "current_scale", 1.0)
         x_off = getattr(widget, "current_x_off", 0.0)
         jump = getattr(widget, "jump_y", 0.0)
 
-        # Base icon size is 44px, scaling up with magnification
-        target_size = 44.0 * scale
+        # Base icon size is 42px, scaling up with magnification
+        target_size = 42.0 * scale
         pb_w = pb.get_width()
 
         # Center horizontally + BuildUI parting nudge
@@ -1125,8 +1125,8 @@ class MacOSDock(Gtk.Window):
 
         # Anchor to bottom baseline:
         # As it scales up, it grows upward and lifts smoothly above the dock
-        extra_lift = (scale - 1.0) * 12.0 + jump
-        y = (h - 7.0) - target_size - extra_lift
+        extra_lift = (scale - 1.0) * 10.0 + jump
+        y = (h - 7.2) - target_size - extra_lift
 
         cr.save()
         cr.reset_clip()  # Allows drawing magnified and parted icons outside the 48px box without clipping
@@ -1142,9 +1142,9 @@ class MacOSDock(Gtk.Window):
         if getattr(widget, "is_running", False):
             cr.save()
             cr.reset_clip()
-            dot_r = 3.0  # Crisp 6.0px diameter dot (clearer and bigger than tiny static bullet text)
+            dot_r = 2.8  # Crisp 5.6px diameter dot
             dot_x = (w / 2.0) + x_off
-            dot_y = (h - 3.5) - (jump * 0.25)
+            dot_y = (h - 3.2) - (jump * 0.2)
             cr.arc(dot_x, dot_y, dot_r, 0, 2 * math.pi)
 
             succ, rgba = widget.get_style_context().lookup_color("accent-purple")
@@ -1428,7 +1428,7 @@ class MacOSDock(Gtk.Window):
         card_x, card_y = coords
         alloc = self.card.get_allocation()
         card_w = alloc.width if alloc.width > 0 else 550
-        card_h = alloc.height if alloc.height > 0 else 76
+        card_h = alloc.height if alloc.height > 0 else 66
 
         # Tracking within card bounds with generous vertical headroom for lifted icons
         if -15 <= card_x <= card_w + 15 and -45 <= card_y <= card_h + 15:
@@ -2090,7 +2090,7 @@ class MacOSDock(Gtk.Window):
         dt = min(0.05, now - self.last_anim_time)
         self.last_anim_time = now
 
-        HIDDEN_MARGIN = -125.0
+        HIDDEN_MARGIN = -115.0
         target = 0.0 if self.should_be_visible() else HIDDEN_MARGIN
         diff = target - self.current_margin
 
@@ -2332,8 +2332,8 @@ class MacOSDock(Gtk.Window):
         #dock-card {{
             background-color: alpha(@bg-color, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.20);
-            border-radius: 22px;
-            padding: 5px 10px 2px 10px;
+            border-radius: 20px;
+            padding: 3px 8px 1px 8px;
         }}
 
         #dock-item,
@@ -2348,9 +2348,9 @@ class MacOSDock(Gtk.Window):
             -gtk-outline-radius: 0;
             box-shadow: none;
             border-radius: 12px;
-            padding: 4px 4px 2px 4px;
+            padding: 2px 3px 1px 3px;
             margin: 0 1px;
-            min-width: 60px;
+            min-width: 54px;
             transition: background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
@@ -2378,7 +2378,7 @@ class MacOSDock(Gtk.Window):
         #dock-separator {{
             background-color: rgba(255, 255, 255, 0.22);
             min-width: 1px;
-            margin: 8px 6px 10px 6px;
+            margin: 5px 4px 7px 4px;
         }}
 
         /* Context Menu (GNOME / macOS Solid High-Contrast Dark Menu - Completely Opaque & Crisp Visible Border) */
