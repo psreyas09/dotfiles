@@ -22,14 +22,25 @@ button {
     outline: none;
 }
 
-button:hover {
-    background-color: alpha(@accent-purple, 0.25);
-    border-color: @accent-purple;
+button:focus {
+    background-color: alpha(@bg-color, 0.85);
+    border-color: @border-color;
+    outline: none;
+    outline-style: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
 
-button:focus {
+button:hover, button:focus:hover {
+    background-color: alpha(@accent-purple, 0.28);
+    border-color: @accent-purple;
+    box-shadow: 0 8px 24px alpha(@accent-purple, 0.35);
+}
+
+button:active {
+    background-color: alpha(@accent-purple, 0.50);
+    border-color: @accent-purple;
     outline: none;
-    box-shadow: none;
+    outline-style: none;
 }
 
 #lock { background-image: image(url("/usr/share/wlogout/icons/lock.png")); }
