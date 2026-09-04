@@ -229,6 +229,85 @@ def get_power_profile():
 def set_power_profile(profile):
     async_cmd(f'busctl set-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles ActiveProfile s "{profile}"')
 
+ENVYCONTROL_BIN = "/home/sreyas/.local/bin/envycontrol"
+
+def get_graphics_mode():
+    try:
+        res = subprocess.run([ENVYCONTROL_BIN, "-q"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+        if res.returncode == 0:
+            m = res.stdout.strip().lower()
+            if m in ["hybrid", "integrated", "nvidia"]:
+                return m
+    except Exception:
+        pass
+    if os.path.exists("/etc/modprobe.d/blacklist-nvidia.conf"):
+        return "integrated"
+    return "hybrid"
+
+def get_gpu_status_info():
+    mode = get_graphics_mode()
+    info = {
+        "mode": mode,
+        "igpu": "AMD Radeon Vega Series (Renoir)",
+        "dgpu": "NVIDIA GeForce GTX 1650 Mobile",
+        "dgpu_status": "Unknown",
+        "dgpu_power": ""
+    }
+    pci_status_path = "/sys/bus/pci/devices/0000:01:00.0/power/runtime_status"
+    if mode == "integrated":
+        info["dgpu_status"] = "Powered Off / Disabled"
+        info["dgpu_power"] = "0W (Maximum Battery Life)"
+    elif os.path.exists(pci_status_path):
+        try:
+            with open(pci_status_path) as f:
+                st = f.read().strip().lower()
+            if st == "suspended":
+                info["dgpu_status"] = "Suspended (RTD3 Sleep)"
+                info["dgpu_power"] = "~0W (Activates on-demand for games)"
+            elif st == "active":
+                info["dgpu_status"] = "Active (In-Use)"
+                info["dgpu_power"] = "Powering 3D / Compute workload"
+            else:
+                info["dgpu_status"] = st.title()
+        except Exception:
+            info["dgpu_status"] = "Ready"
+    else:
+        info["dgpu_status"] = "Offline"
+    return info
+
+def set_graphics_mode(target_mode, callback=None):
+    def worker():
+        success = False
+        err_msg = ""
+        args = [ENVYCONTROL_BIN, "-s", target_mode]
+        if target_mode == "hybrid":
+            args += ["--rtd3", "2"]
+
+        try:
+            res = subprocess.run(["sudo", "-n"] + args,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
+            if res.returncode == 0:
+                success = True
+        except Exception:
+            pass
+
+        if not success:
+            try:
+                res = subprocess.run(["pkexec"] + args,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+                if res.returncode == 0:
+                    success = True
+                else:
+                    err_msg = res.stderr.strip() or res.stdout.strip() or "Authorization cancelled"
+            except Exception as e:
+                err_msg = str(e)
+
+        current = get_graphics_mode()
+        if callback:
+            GLib.idle_add(callback, success, current, err_msg)
+
+    threading.Thread(target=worker, daemon=True).start()
+
 HOWDY_CONFIG_PATH = "/usr/local/etc/howdy/config.ini"
 HOWDY_BIN_PATH = "/usr/local/bin/howdy"
 
@@ -505,6 +584,123 @@ class NiriSettingsApp(Gtk.Window):
                 widget.show_all()
                 self.pages_built[page_id] = widget
 
+    def switch_to_page(self, page_id):
+        self.load_page(page_id)
+        self.stack.set_visible_child_name(page_id)
+        for row in self.sidebar_list.get_children():
+            if getattr(row, "page_id", None) == page_id:
+                self.sidebar_list.select_row(row)
+                break
+
+    def show_graphics_switch_dialog(self, target_mode, on_complete=None):
+        mode_titles = {
+            "hybrid": "Hybrid Mode (AMD iGPU + On-Demand NVIDIA)",
+            "integrated": "Integrated Mode (iGPU Only • Maximum Battery)",
+            "nvidia": "NVIDIA Dedicated Mode (Maximum Performance)"
+        }
+        mode_descriptions = {
+            "hybrid": "AMD Radeon Vega drives the desktop & Wayland. NVIDIA GTX 1650 enters low-power sleep (~0W) and activates automatically on-demand for games or 3D workloads.",
+            "integrated": "Completely disables and powers off the NVIDIA GeForce GPU. Maximizes laptop battery life by running exclusively on AMD Radeon Vega graphics.",
+            "nvidia": "Sets the NVIDIA GeForce GPU as primary for all applications. Recommended for heavy gaming, video editing, and external displays on AC power."
+        }
+
+        dlg = Gtk.Dialog(
+            title="Switch Graphics Mode",
+            transient_for=self,
+            flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT
+        )
+        dlg.set_default_size(520, 260)
+        box = dlg.get_content_area()
+        box.set_spacing(16)
+        box.set_margin_top(22)
+        box.set_margin_bottom(20)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+
+        # Header with icon
+        h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        icon = Gtk.Image.new_from_icon_name("applications-games", Gtk.IconSize.DIALOG)
+        h_box.pack_start(icon, False, False, 0)
+
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        lbl_title = Gtk.Label(label=f"Switch to {mode_titles.get(target_mode, target_mode)}?")
+        lbl_title.set_name("row-title")
+        lbl_title.set_xalign(0)
+        title_box.pack_start(lbl_title, False, False, 0)
+
+        lbl_desc = Gtk.Label(
+            label=f"{mode_descriptions.get(target_mode, '')}\n\n"
+                  f"Changing graphics mode modifies kernel modules and initramfs via PolicyKit authorization. "
+                  f"A system restart is required for the new hardware configuration to take effect."
+        )
+        lbl_desc.set_name("row-subtitle")
+        lbl_desc.set_xalign(0)
+        lbl_desc.set_line_wrap(True)
+        lbl_desc.set_max_width_chars(52)
+        title_box.pack_start(lbl_desc, False, False, 0)
+        h_box.pack_start(title_box, True, True, 0)
+        box.pack_start(h_box, True, True, 0)
+
+        # Progress / status box
+        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        spinner = Gtk.Spinner()
+        status_lbl = Gtk.Label(label="Configuring graphics drivers and updating initramfs... Please wait.")
+        status_lbl.set_name("row-subtitle")
+        status_lbl.set_line_wrap(True)
+        status_box.pack_start(spinner, False, False, 0)
+        status_box.pack_start(status_lbl, True, True, 0)
+        status_box.set_no_show_all(True)
+        box.pack_start(status_box, False, False, 0)
+
+        # Buttons
+        btn_cancel = dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        btn_apply_later = dlg.add_button("Apply & Reboot Later", Gtk.ResponseType.APPLY)
+        btn_apply_now = dlg.add_button("Apply & Reboot Now", Gtk.ResponseType.OK)
+        btn_apply_now.get_style_context().add_class("suggested-action")
+
+        dlg.show_all()
+
+        def on_response(dialog, response_id):
+            if response_id in [Gtk.ResponseType.OK, Gtk.ResponseType.APPLY]:
+                btn_cancel.set_sensitive(False)
+                btn_apply_later.set_sensitive(False)
+                btn_apply_now.set_sensitive(False)
+                status_box.show()
+                spinner.start()
+
+                def on_done(success, final_mode, err_msg):
+                    spinner.stop()
+                    if success:
+                        if response_id == Gtk.ResponseType.OK:
+                            status_lbl.set_text("Graphics mode configured successfully! Rebooting system...")
+                            GLib.timeout_add(1500, lambda: subprocess.Popen(["systemctl", "reboot"]))
+                        else:
+                            status_lbl.set_text(f"Successfully switched to {target_mode.title()} mode! Please restart your computer when convenient.")
+                            btn_cancel.set_sensitive(True)
+                            btn_cancel.set_label("Close")
+                            btn_apply_later.hide()
+                            btn_apply_now.set_sensitive(True)
+                            btn_apply_now.set_label("Reboot Now")
+                            btn_apply_now.connect("clicked", lambda *_: subprocess.Popen(["systemctl", "reboot"]))
+                            if on_complete:
+                                on_complete(True, final_mode)
+                    else:
+                        status_lbl.set_text(f"Operation failed or cancelled: {err_msg}")
+                        btn_cancel.set_sensitive(True)
+                        btn_cancel.set_label("Close")
+                        btn_apply_later.set_sensitive(True)
+                        btn_apply_now.set_sensitive(True)
+                        if on_complete:
+                            on_complete(False, final_mode)
+
+                set_graphics_mode(target_mode, on_done)
+                return True
+            else:
+                dialog.destroy()
+                return False
+
+        dlg.connect("response", on_response)
+
     def make_page_container(self, title, description=""):
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -557,6 +753,17 @@ class NiriSettingsApp(Gtk.Window):
             "Internal Display Panel",
             f"AU Optronics • {diag}\" 16:9 • eDP-1 (Primary Display)",
             Gtk.Label(label="1920x1080 Native")
+        ))
+
+        gpu_info = get_gpu_status_info()
+        gpu_btn = Gtk.Button(label="Manage in Power Settings →")
+        gpu_btn.connect("clicked", lambda *_: self.switch_to_page("power"))
+
+        info_card.add_row(create_setting_row(
+            "applications-games",
+            "Graphics Processors",
+            f"Mode: {gpu_info['mode'].title()} • {gpu_info['igpu']} + {gpu_info['dgpu']} ({gpu_info['dgpu_status']})",
+            gpu_btn
         ))
 
         mode_card = SettingsCard()
@@ -1352,6 +1559,71 @@ class NiriSettingsApp(Gtk.Window):
             profile_combo
         ))
 
+        # Graphics & GPU Power Mode Card
+        vbox.pack_start(Gtk.Label(label="GRAPHICS & HYBRID GPU MODE", xalign=0, name="section-caption"), False, False, 0)
+        gpu_card = SettingsCard()
+        vbox.pack_start(gpu_card, False, False, 0)
+
+        gpu_info = get_gpu_status_info()
+        cur_mode = gpu_info["mode"]
+
+        # Row 1: Hardware & Live State
+        status_badge = Gtk.Label()
+        if cur_mode == "integrated":
+            status_badge.set_name("badge-label-muted")
+            status_badge.set_text("iGPU Only (NVIDIA Off)")
+        elif cur_mode == "hybrid":
+            status_badge.set_name("badge-label-active")
+            status_badge.set_text("Hybrid Active")
+        else:
+            status_badge.set_name("badge-label-info")
+            status_badge.set_text("NVIDIA Dedicated")
+
+        gpu_card.add_row(create_setting_row(
+            "video-display",
+            "Installed Graphics Processors",
+            f"Active: {cur_mode.title()} Mode • iGPU: {gpu_info['igpu']}\nDiscrete: {gpu_info['dgpu']} ({gpu_info['dgpu_status']} • {gpu_info['dgpu_power']})",
+            status_badge
+        ))
+
+        # Row 2: Mode Selector & Action
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        mode_box.set_valign(Gtk.Align.CENTER)
+
+        mode_combo = Gtk.ComboBoxText()
+        mode_combo.append("hybrid", "Hybrid (On-Demand NVIDIA PRIME)")
+        mode_combo.append("integrated", "Integrated (iGPU Only • Maximum Battery)")
+        mode_combo.append("nvidia", "NVIDIA (Dedicated Only • High Performance)")
+        mode_combo.set_active_id(cur_mode if cur_mode in ["hybrid", "integrated", "nvidia"] else "hybrid")
+
+        apply_btn = Gtk.Button(label="Apply Mode...")
+        apply_btn.set_sensitive(False)
+        apply_btn.get_style_context().add_class("suggested-action")
+
+        mode_box.pack_start(mode_combo, False, False, 0)
+        mode_box.pack_start(apply_btn, False, False, 0)
+
+        def on_gpu_mode_changed(combo):
+            selected = combo.get_active_id()
+            active = get_graphics_mode()
+            apply_btn.set_sensitive(selected != active)
+
+        mode_combo.connect("changed", on_gpu_mode_changed)
+
+        def on_apply_gpu_clicked(_):
+            selected = mode_combo.get_active_id()
+            if selected and selected != get_graphics_mode():
+                self.show_graphics_switch_dialog(selected, on_complete=lambda *_: self.reload_all_state())
+
+        apply_btn.connect("clicked", on_apply_gpu_clicked)
+
+        gpu_card.add_row(create_setting_row(
+            "applications-games",
+            "Switch Operating Graphics Mode",
+            "Switch between Hybrid (PRIME on-demand), Integrated (NVIDIA disabled to maximize battery), or Dedicated NVIDIA",
+            mode_box
+        ))
+
         # Battery Health Card
         vbox.pack_start(Gtk.Label(label="BATTERY STATE", xalign=0, name="section-caption"), False, False, 0)
         bat_card = SettingsCard()
@@ -1877,6 +2149,16 @@ class NiriSettingsApp(Gtk.Window):
             font-size: 11px;
             font-weight: 700;
             color: #e74c3c;
+        }}
+
+        #badge-label-info {{
+            background-color: rgba(52, 152, 219, 0.20);
+            border: 1px solid rgba(52, 152, 219, 0.45);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #3498db;
         }}
 
         #wall-preview-img {{
