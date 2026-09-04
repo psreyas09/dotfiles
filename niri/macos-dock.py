@@ -14,7 +14,8 @@ import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
 gi.require_version('Gio', '2.0')
-from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf, Gio
+from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf, Gio, cairo
+import cairo
 
 PID_FILE = "/tmp/macos_dock.pid"
 PINNED_CONFIG_FILE = os.path.expanduser("~/.config/niri/dock-pinned.json")
@@ -904,9 +905,9 @@ class MacOSDock(Gtk.Window):
         vbox.set_halign(Gtk.Align.CENTER)
         btn.add(vbox)
 
-        # App Icon resolution
+        # App Icon resolution (loaded at 64px for razor-sharp magnification rendering)
         pb = None
-        size = 44
+        size = 64
         theme = Gtk.IconTheme.get_default()
 
         for cand in item.get("icon", []):
@@ -941,14 +942,14 @@ class MacOSDock(Gtk.Window):
             except Exception:
                 pass
 
-        # High-performance Cairo DrawingArea for 120Hz smooth jumping animation & flowing wave
+        # High-performance Cairo DrawingArea for 120Hz smooth magnification & flowing wave
         da = Gtk.DrawingArea()
-        da.set_size_request(48, 60)
+        da.set_size_request(48, 72)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
-        da.wave_lift = 0.0
-        da.target_lift = 0.0
-        da.wave_vel = 0.0
+        da.current_scale = 1.0
+        da.target_scale = 1.0
+        da.scale_vel = 0.0
         da._pb = pb
         da.connect("draw", self.on_icon_draw)
         vbox.pack_start(da, False, False, 0)
@@ -985,18 +986,31 @@ class MacOSDock(Gtk.Window):
             return False
         alloc = widget.get_allocation()
         w = alloc.width if alloc.width > 0 else 48
-        pb_w = pb.get_width()
-        x = max(0, (w - pb_w) // 2)
+        h = alloc.height if alloc.height > 0 else 72
 
-        # Headroom: resting position is at y = 15.0 (height is 60px, icon is 44px)
-        # Leaving 15px headroom at top for snappy jump and flowing wave
+        scale = getattr(widget, "current_scale", 1.0)
         jump = getattr(widget, "jump_y", 0.0)
-        wave = getattr(widget, "wave_lift", 0.0)
-        total_lift = min(14.0, jump + wave)
-        y = 15.0 - total_lift
 
-        Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
+        # Base icon size is 44px, scaling up with magnification
+        target_size = 44.0 * scale
+        pb_w = pb.get_width()
+
+        # Center horizontally inside allocation
+        x = (w - target_size) / 2.0
+
+        # Anchor to bottom baseline:
+        # As it scales up, it grows upward and lifts smoothly above the dock
+        extra_lift = (scale - 1.0) * 8.0 + jump
+        y = (h - 4.0) - target_size - extra_lift
+
+        cr.save()
+        cr.translate(x, y)
+        s = target_size / pb_w
+        cr.scale(s, s)
+        Gdk.cairo_set_source_pixbuf(cr, pb, 0, 0)
+        cr.get_source().set_filter(cairo.FILTER_BILINEAR)
         cr.paint()
+        cr.restore()
         return False
 
     def on_item_button_press(self, btn, event, item, is_dynamic, win_id):
@@ -1024,8 +1038,8 @@ class MacOSDock(Gtk.Window):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
         da = getattr(btn, "_da", None)
-        if da and getattr(da, "wave_lift", 0.0) < 1.0:
-            da.wave_vel = 55.0  # snappy initial jump pop!
+        if da and getattr(da, "current_scale", 1.0) < 1.05:
+            da.scale_vel = 2.2  # snappy initial jump pop!
         coords = self.translate_coordinates(self.card, event.x, event.y)
         if coords:
             self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
@@ -1262,8 +1276,8 @@ class MacOSDock(Gtk.Window):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
-        WAVE_RADIUS = 110.0
-        MAX_HOVER_LIFT = 10.0
+        WAVE_RADIUS = 140.0
+        MAX_SCALE = 1.38
 
         buttons = self.get_all_icon_buttons()
         any_active = False
@@ -1290,20 +1304,20 @@ class MacOSDock(Gtk.Window):
             dist = abs(mouse_card_x - center_x)
 
             if btn == touched_btn:
-                target = MAX_HOVER_LIFT
+                target = MAX_SCALE
             elif dist < WAVE_RADIUS:
-                target = MAX_HOVER_LIFT * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
+                target = 1.0 + (MAX_SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
             else:
-                target = 0.0
+                target = 1.0
 
-            # If icon was completely at rest and now targeted, give snappy initial jump pop!
-            current_target = getattr(da, "target_lift", 0.0)
-            current_pos = getattr(da, "wave_lift", 0.0)
-            if target > 2.0 and current_target < 0.2 and current_pos < 1.0:
-                da.wave_vel = 55.0
+            # Initial snappy impulse when touched from resting state
+            current_target = getattr(da, "target_scale", 1.0)
+            current_scale = getattr(da, "current_scale", 1.0)
+            if target > 1.08 and current_target <= 1.02 and current_scale <= 1.03:
+                da.scale_vel = 2.2
 
-            da.target_lift = target
-            if target > 0.0 or current_pos > 0.05 or abs(getattr(da, "wave_vel", 0.0)) > 0.5:
+            da.target_scale = target
+            if target > 1.0 or current_scale > 1.005 or abs(getattr(da, "scale_vel", 0.0)) > 0.02:
                 any_active = True
 
         if any_active:
@@ -1315,8 +1329,8 @@ class MacOSDock(Gtk.Window):
         for btn in buttons:
             da = getattr(btn, "_da", None)
             if da:
-                da.target_lift = 0.0
-                if getattr(da, "wave_lift", 0.0) > 0.05 or abs(getattr(da, "wave_vel", 0.0)) > 0.5:
+                da.target_scale = 1.0
+                if getattr(da, "current_scale", 1.0) > 1.005 or abs(getattr(da, "scale_vel", 0.0)) > 0.02:
                     any_to_lower = True
         if any_to_lower:
             self.start_wave_animation()
@@ -1339,34 +1353,42 @@ class MacOSDock(Gtk.Window):
             da = getattr(btn, "_da", None)
             if not da:
                 continue
-            pos = getattr(da, "wave_lift", 0.0)
-            vel = getattr(da, "wave_vel", 0.0)
-            target = getattr(da, "target_lift", 0.0)
+            scale = getattr(da, "current_scale", 1.0)
+            vel = getattr(da, "scale_vel", 0.0)
+            target = getattr(da, "target_scale", 1.0)
 
-            if abs(target - pos) > 0.05 or abs(vel) > 0.5:
+            diff = target - scale
+            if abs(diff) > 0.004 or abs(vel) > 0.02:
                 any_active = True
-                force = (target - pos) * STIFFNESS - vel * DAMPING
+                force = diff * STIFFNESS - vel * DAMPING
                 vel += force * dt
-                pos += vel * dt
-                if pos < 0.0:
-                    pos = 0.0
+                scale += vel * dt
+                if scale < 1.0:
+                    scale = 1.0
                     vel = 0.0
-                da.wave_lift = pos
-                da.wave_vel = vel
+                da.current_scale = scale
+                da.scale_vel = vel
+
+                # Smoothly adjust width request for organic rippling
+                req_w = int(round(48.0 * (1.0 + (scale - 1.0) * 0.75)))
+                da.set_size_request(req_w, 72)
                 da.queue_draw()
-            elif pos != target:
-                da.wave_lift = target
-                da.wave_vel = 0.0
+            elif scale != target:
+                da.current_scale = target
+                da.scale_vel = 0.0
+                req_w = int(round(48.0 * (1.0 + (target - 1.0) * 0.75)))
+                da.set_size_request(req_w, 72)
                 da.queue_draw()
 
         if not any_active:
-            all_zero = all(getattr(btn._da, "target_lift", 0.0) == 0.0 for btn in buttons if hasattr(btn, "_da"))
-            if all_zero:
+            all_base = all(getattr(btn._da, "target_scale", 1.0) == 1.0 for btn in buttons if hasattr(btn, "_da"))
+            if all_base:
                 for btn in buttons:
                     if hasattr(btn, "_da"):
-                        btn._da.wave_lift = 0.0
-                        btn._da.wave_vel = 0.0
-                        btn._da.target_lift = 0.0
+                        btn._da.current_scale = 1.0
+                        btn._da.scale_vel = 0.0
+                        btn._da.target_scale = 1.0
+                        btn._da.set_size_request(48, 72)
                         btn._da.queue_draw()
                 self.is_wave_animating = False
                 self.last_wave_time = None
@@ -2109,7 +2131,6 @@ class MacOSDock(Gtk.Window):
 
         * {{
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Symbols Nerd Font", "JetBrains Mono", sans-serif;
-            transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
         window {{
@@ -2144,6 +2165,7 @@ class MacOSDock(Gtk.Window):
             padding: 4px 6px 2px 6px;
             margin: 0 2px;
             min-width: 48px;
+            transition: background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
         #dock-item:hover,
