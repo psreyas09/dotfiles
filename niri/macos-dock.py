@@ -664,7 +664,7 @@ class MacOSDock(Gtk.Window):
         except Exception:
             pass
 
-    def create_menu_item(self, label_text, icon_name=None, callback=None, is_header=False, is_danger=False):
+    def create_menu_item(self, label_text, icon_name=None, callback=None, is_header=False, is_danger=False, markup=None):
         item = Gtk.MenuItem()
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
 
@@ -673,8 +673,10 @@ class MacOSDock(Gtk.Window):
             box.pack_start(img, False, False, 0)
 
         lbl = Gtk.Label()
-        if is_header:
-            lbl.set_markup(f"<b>{GLib.markup_escape_text(label_text)}</b>")
+        if markup:
+            lbl.set_markup(markup)
+        elif is_header:
+            lbl.set_markup(f"<span weight='bold' foreground='#FFFFFF'>{GLib.markup_escape_text(label_text)}</span>")
             item.set_sensitive(False)
             item.get_style_context().add_class("menu-header")
         else:
@@ -705,6 +707,15 @@ class MacOSDock(Gtk.Window):
         self.active_menu = menu
         self.is_menu_open = True
 
+        # Set 32-bit RGBA visual so rounded corners have true alpha (no black corners)
+        top = menu.get_toplevel()
+        screen = Gdk.Screen.get_default()
+        if screen:
+            rgba = screen.get_rgba_visual()
+            if rgba:
+                top.set_visual(rgba)
+        top.set_app_paintable(True)
+
         name = item.get("name", "Application")
         is_trash = (name.lower() == "trash")
 
@@ -727,26 +738,33 @@ class MacOSDock(Gtk.Window):
             is_running = len(windows) > 0
 
             # 1. Header with App Title & Running State
-            header_text = name
+            escaped_name = GLib.markup_escape_text(name)
             if is_running:
-                header_text += f"  •  Running ({len(windows)})" if len(windows) > 1 else "  •  Running"
-            menu.append(self.create_menu_item(header_text, is_header=True))
+                status_text = f"  <span size='small' foreground='#B5B5BE'>• Running ({len(windows)})</span>" if len(windows) > 1 else "  <span size='small' foreground='#B5B5BE'>• Running</span>"
+                header_markup = f"<span weight='bold' foreground='#FFFFFF'>{escaped_name}</span>{status_text}"
+            else:
+                header_markup = f"<span weight='bold' foreground='#FFFFFF'>{escaped_name}</span>"
+            menu.append(self.create_menu_item(name, is_header=True, markup=header_markup))
             menu.append(Gtk.SeparatorMenuItem())
 
             # 2. Open Windows List (GNOME/macOS Window Switcher)
             if is_running:
                 for w in windows:
                     w_title = w.get("title") or "Window"
-                    if len(w_title) > 42:
-                        w_title = w_title[:40] + "…"
+                    if len(w_title) > 40:
+                        w_title = w_title[:38] + "…"
                     w_id = w.get("id")
                     is_focused = w.get("is_focused", False)
-                    dot_prefix = "●  " if is_focused else "○  "
-                    w_label = f"{dot_prefix}{w_title}"
+                    escaped_title = GLib.markup_escape_text(w_title)
+                    if is_focused:
+                        w_markup = f"<span foreground='#D6C850'>●</span>  <span foreground='#FFFFFF' weight='bold'>{escaped_title}</span>"
+                    else:
+                        w_markup = f"<span foreground='#7E7E88'>○</span>  <span foreground='#E6E6EC'>{escaped_title}</span>"
                     menu.append(self.create_menu_item(
-                        w_label,
+                        w_title,
                         "window-restore-symbolic",
-                        lambda _, wid=w_id: subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(wid)])
+                        lambda _, wid=w_id: subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(wid)]),
+                        markup=w_markup
                     ))
                 menu.append(Gtk.SeparatorMenuItem())
 
@@ -813,6 +831,14 @@ class MacOSDock(Gtk.Window):
             menu.get_style_context().add_class("dock-menu")
             self.active_menu = menu
             self.is_menu_open = True
+
+            top = menu.get_toplevel()
+            screen = Gdk.Screen.get_default()
+            if screen:
+                rgba = screen.get_rgba_visual()
+                if rgba:
+                    top.set_visual(rgba)
+            top.set_app_paintable(True)
 
             menu.append(self.create_menu_item("macOS Dock", is_header=True))
             menu.append(Gtk.SeparatorMenuItem())
@@ -1162,30 +1188,39 @@ class MacOSDock(Gtk.Window):
             margin: 8px 6px 10px 6px;
         }}
 
-        /* Context Menu (macOS & GNOME Frosted Glass Styling) */
-        window.popup, window.popup menu {{
+        /* Context Menu (GNOME / macOS Solid High-Contrast Dark Menu - No Shadows / No Transparency Bleed) */
+        window.popup,
+        window.popup.background,
+        window.popup decoration,
+        window.popup menu {{
+            background: transparent;
             background-color: transparent;
+            box-shadow: none;
+            border: none;
+            margin: 0;
+            padding: 0;
         }}
 
         menu.dock-menu {{
-            background-color: alpha(@bg-color, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 16px;
+            background-color: #1a1a20;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
             padding: 6px;
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            margin: 0;
+            box-shadow: none;
         }}
 
         menu.dock-menu menuitem {{
-            border-radius: 8px;
+            border-radius: 7px;
             padding: 6px 12px;
-            color: @fg-color;
+            color: #FFFFFF;
             font-size: 13px;
             font-weight: 500;
             margin: 1px 0;
         }}
 
         menu.dock-menu menuitem:hover {{
-            background-color: alpha(@accent-purple, 0.35);
+            background-color: alpha(@accent-purple, 0.45);
             color: #FFFFFF;
         }}
 
@@ -1193,11 +1228,11 @@ class MacOSDock(Gtk.Window):
         menu.dock-menu menuitem.menu-header:disabled,
         menu.dock-menu menuitem.menu-header label,
         menu.dock-menu menuitem.menu-header:disabled label {{
-            color: alpha(@fg-color, 0.75);
+            color: rgba(255, 255, 255, 0.70);
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.5px;
-            padding: 4px 12px 4px 12px;
+            padding: 5px 12px 3px 12px;
         }}
 
         menu.dock-menu menuitem.menu-header:hover {{
@@ -1205,12 +1240,12 @@ class MacOSDock(Gtk.Window):
         }}
 
         menu.dock-menu menuitem.menu-danger:hover {{
-            background-color: rgba(235, 77, 75, 0.38);
+            background-color: rgba(235, 77, 75, 0.45);
             color: #FFFFFF;
         }}
 
         menu.dock-menu separator {{
-            background-color: rgba(255, 255, 255, 0.12);
+            background-color: rgba(255, 255, 255, 0.14);
             min-height: 1px;
             margin: 4px 6px;
         }}
