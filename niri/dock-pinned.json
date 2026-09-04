@@ -62,6 +62,26 @@
     ]
   },
   {
+    "name": "Discord",
+    "icon": [
+      "discord"
+    ],
+    "cmd": "/usr/bin/discord --url --",
+    "app_ids": [
+      "discord"
+    ]
+  },
+  {
+    "name": "kitty",
+    "icon": [
+      "kitty"
+    ],
+    "cmd": "kitty",
+    "app_ids": [
+      "kitty"
+    ]
+  },
+  {
     "name": "Settings",
     "icon": [
       "preferences-system",
@@ -72,16 +92,6 @@
     "app_ids": [
       "niri-settings",
       "niri-settings.py"
-    ]
-  },
-  {
-    "name": "Discord",
-    "icon": [
-      "discord"
-    ],
-    "cmd": "/usr/bin/discord --url --",
-    "app_ids": [
-      "discord"
     ]
   }
 ]
