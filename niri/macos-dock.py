@@ -944,12 +944,15 @@ class MacOSDock(Gtk.Window):
 
         # High-performance Cairo DrawingArea for 120Hz smooth magnification & flowing wave
         da = Gtk.DrawingArea()
-        da.set_size_request(60, 72)
+        da.set_size_request(48, 68)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
         da.current_scale = 1.0
         da.target_scale = 1.0
         da.scale_vel = 0.0
+        da.current_x_off = 0.0
+        da.target_x = 0.0
+        da.x_vel = 0.0
         da._pb = pb
         da.connect("draw", self.on_icon_draw)
         vbox.pack_start(da, False, False, 0)
@@ -985,25 +988,27 @@ class MacOSDock(Gtk.Window):
         if not pb:
             return False
         alloc = widget.get_allocation()
-        w = alloc.width if alloc.width > 0 else 60
-        h = alloc.height if alloc.height > 0 else 72
+        w = alloc.width if alloc.width > 0 else 48
+        h = alloc.height if alloc.height > 0 else 68
 
         scale = getattr(widget, "current_scale", 1.0)
+        x_off = getattr(widget, "current_x_off", 0.0)
         jump = getattr(widget, "jump_y", 0.0)
 
         # Base icon size is 44px, scaling up with magnification
         target_size = 44.0 * scale
         pb_w = pb.get_width()
 
-        # Center horizontally inside allocation
-        x = (w - target_size) / 2.0
+        # Center horizontally + BuildUI parting nudge
+        x = (w - target_size) / 2.0 + x_off
 
         # Anchor to bottom baseline:
         # As it scales up, it grows upward and lifts smoothly above the dock
-        extra_lift = (scale - 1.0) * 8.0 + jump
+        extra_lift = (scale - 1.0) * 12.0 + jump
         y = (h - 4.0) - target_size - extra_lift
 
         cr.save()
+        cr.reset_clip()  # Allows drawing magnified and parted icons outside the 48px box without clipping
         cr.translate(x, y)
         s = target_size / pb_w
         cr.scale(s, s)
@@ -1276,21 +1281,22 @@ class MacOSDock(Gtk.Window):
 
         card_x, card_y = coords
         alloc = self.card.get_allocation()
-        card_w = alloc.width if alloc.width > 0 else 600
-        card_h = alloc.height if alloc.height > 0 else 80
+        card_w = alloc.width if alloc.width > 0 else 550
+        card_h = alloc.height if alloc.height > 0 else 76
 
-        # Tracking within card bounds with headroom for lifted icons
-        if -10 <= card_x <= card_w + 10 and -35 <= card_y <= card_h + 10:
-            self.update_hover_wave(card_x, card_y)
+        # Tracking within card bounds with generous vertical headroom for lifted icons
+        if -15 <= card_x <= card_w + 15 and -45 <= card_y <= card_h + 15:
+            self.update_hover_wave(card_x)
         else:
             self.clear_hover_wave()
 
-    def update_hover_wave(self, mouse_card_x, mouse_card_y):
+    def update_hover_wave(self, mouse_card_x):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
-        WAVE_RADIUS = 150.0
-        MAX_SCALE = 1.35
+        DISTANCE = 110.0  # BuildUI DISTANCE
+        SCALE = 1.55      # BuildUI SCALE factor
+        NUDGE = 18.0      # BuildUI NUDGE (parting displacement)
 
         buttons = self.get_all_icon_buttons()
         any_active = False
@@ -1303,19 +1309,28 @@ class MacOSDock(Gtk.Window):
             if not coords:
                 continue
             alloc = btn.get_allocation()
-            btn_w = alloc.width if alloc.width > 0 else 60.0
+            btn_w = alloc.width if alloc.width > 0 else 48.0
             center_x = coords[0] + btn_w / 2.0
-            dist = abs(mouse_card_x - center_x)
+            d = mouse_card_x - center_x
+            abs_d = abs(d)
 
-            if dist < WAVE_RADIUS:
-                target = 1.0 + (MAX_SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
+            if abs_d < DISTANCE:
+                # Smooth bell curve for scale
+                target_scale = 1.0 + (SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * abs_d / DISTANCE))
+                # BuildUI parting nudge away from mouse
+                target_x = (-d / DISTANCE) * NUDGE * target_scale
             else:
-                target = 1.0
+                target_scale = 1.0
+                target_x = -1.0 * (1.0 if d > 0 else -1.0) * NUDGE
 
-            da.target_scale = target
-            current_scale = getattr(da, "current_scale", 1.0)
-            vel = getattr(da, "scale_vel", 0.0)
-            if abs(target - current_scale) > 0.003 or abs(vel) > 0.01:
+            da.target_scale = target_scale
+            da.target_x = target_x
+
+            cur_s = getattr(da, "current_scale", 1.0)
+            cur_x = getattr(da, "current_x_off", 0.0)
+            vel_s = getattr(da, "scale_vel", 0.0)
+            vel_x = getattr(da, "x_vel", 0.0)
+            if abs(target_scale - cur_s) > 0.003 or abs(target_x - cur_x) > 0.05 or abs(vel_s) > 0.01 or abs(vel_x) > 0.5:
                 any_active = True
 
         if any_active:
@@ -1328,7 +1343,12 @@ class MacOSDock(Gtk.Window):
             da = getattr(btn, "_da", None)
             if da:
                 da.target_scale = 1.0
-                if getattr(da, "current_scale", 1.0) > 1.003 or abs(getattr(da, "scale_vel", 0.0)) > 0.01:
+                da.target_x = 0.0
+                cur_s = getattr(da, "current_scale", 1.0)
+                cur_x = getattr(da, "current_x_off", 0.0)
+                vel_s = getattr(da, "scale_vel", 0.0)
+                vel_x = getattr(da, "x_vel", 0.0)
+                if abs(cur_s - 1.0) > 0.003 or abs(cur_x) > 0.05 or abs(vel_s) > 0.01 or abs(vel_x) > 0.5:
                     any_to_lower = True
         if any_to_lower:
             self.start_wave_animation()
@@ -1341,7 +1361,7 @@ class MacOSDock(Gtk.Window):
             dt = min(0.033, max(0.001, now - self.last_wave_time))
         self.last_wave_time = now
 
-        # Fluid, snappy critically-damped spring physics
+        # BuildUI spring physics (critically damped, snappy)
         STIFFNESS = 280.0
         DAMPING = 28.0
 
@@ -1352,36 +1372,62 @@ class MacOSDock(Gtk.Window):
             da = getattr(btn, "_da", None)
             if not da:
                 continue
-            scale = getattr(da, "current_scale", 1.0)
-            vel = getattr(da, "scale_vel", 0.0)
-            target = getattr(da, "target_scale", 1.0)
 
-            diff = target - scale
-            if abs(diff) > 0.003 or abs(vel) > 0.01:
+            # 1. Scale spring physics
+            s = getattr(da, "current_scale", 1.0)
+            vs = getattr(da, "scale_vel", 0.0)
+            ts = getattr(da, "target_scale", 1.0)
+            diff_s = ts - s
+
+            if abs(diff_s) > 0.003 or abs(vs) > 0.01:
                 any_moving = True
-                force = diff * STIFFNESS - vel * DAMPING
-                vel += force * dt
-                scale += vel * dt
-                if scale < 1.0:
-                    scale = 1.0
-                    vel = 0.0
-                da.current_scale = scale
-                da.scale_vel = vel
-                da.queue_draw()
-            elif scale != target or vel != 0.0:
-                da.current_scale = target
+                force_s = diff_s * STIFFNESS - vs * DAMPING
+                vs += force_s * dt
+                s += vs * dt
+                if s < 1.0:
+                    s = 1.0
+                    vs = 0.0
+                da.current_scale = s
+                da.scale_vel = vs
+            elif s != ts or vs != 0.0:
+                da.current_scale = ts
                 da.scale_vel = 0.0
-                da.queue_draw()
+
+            # 2. X offset (BuildUI parting nudge) spring physics
+            x = getattr(da, "current_x_off", 0.0)
+            vx = getattr(da, "x_vel", 0.0)
+            tx = getattr(da, "target_x", 0.0)
+            diff_x = tx - x
+
+            if abs(diff_x) > 0.05 or abs(vx) > 0.5:
+                any_moving = True
+                force_x = diff_x * STIFFNESS - vx * DAMPING
+                vx += force_x * dt
+                x += vx * dt
+                da.current_x_off = x
+                da.x_vel = vx
+            elif x != tx or vx != 0.0:
+                da.current_x_off = tx
+                da.x_vel = 0.0
+
+        # Invalidate the card so all nudged and magnified icons repaint smoothly
+        self.card.queue_draw()
 
         if not any_moving:
-            all_base = all(getattr(btn._da, "target_scale", 1.0) == 1.0 for btn in buttons if hasattr(btn, "_da"))
+            all_base = all(
+                getattr(btn._da, "target_scale", 1.0) == 1.0 and getattr(btn._da, "target_x", 0.0) == 0.0
+                for btn in buttons if hasattr(btn, "_da")
+            )
             if all_base:
                 for btn in buttons:
                     if hasattr(btn, "_da"):
                         btn._da.current_scale = 1.0
                         btn._da.scale_vel = 0.0
                         btn._da.target_scale = 1.0
-                        btn._da.queue_draw()
+                        btn._da.current_x_off = 0.0
+                        btn._da.x_vel = 0.0
+                        btn._da.target_x = 0.0
+                self.card.queue_draw()
             self.is_wave_animating = False
             self.last_wave_time = None
             return False
