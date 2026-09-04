@@ -126,28 +126,119 @@ def format_app_name(app_id, title=""):
     last = app_id.split(".")[-1]
     return last.replace("-", " ").replace("_", " ").title()
 
+_APP_MAP = {}
+_DESKTOP_INFO_CACHE = {}
+
+def get_app_info_map():
+    global _APP_MAP
+    if _APP_MAP:
+        return _APP_MAP
+    try:
+        for app in Gio.AppInfo.get_all():
+            did = (app.get_id() or "").replace(".desktop", "").lower()
+            if did:
+                _APP_MAP[did] = app
+            if hasattr(app, "get_startup_wm_class"):
+                wm = app.get_startup_wm_class()
+                if wm:
+                    _APP_MAP[wm.lower()] = app
+            name = (app.get_name() or "").lower()
+            if name and name not in _APP_MAP:
+                _APP_MAP[name] = app
+    except Exception:
+        pass
+    return _APP_MAP
+
+
+def find_desktop_info(item):
+    app_ids = tuple(item.get("app_ids", []))
+    name = item.get("name", "")
+    cache_key = (app_ids, name)
+    if cache_key in _DESKTOP_INFO_CACHE:
+        return _DESKTOP_INFO_CACHE[cache_key]
+
+    app_map = get_app_info_map()
+
+    for aid in app_ids:
+        if not aid:
+            continue
+        al = aid.lower()
+        if al in app_map:
+            _DESKTOP_INFO_CACHE[cache_key] = app_map[al]
+            return app_map[al]
+        al_clean = al.replace(".desktop", "")
+        if al_clean in app_map:
+            _DESKTOP_INFO_CACHE[cache_key] = app_map[al_clean]
+            return app_map[al_clean]
+        last = al_clean.split(".")[-1]
+        if last in app_map:
+            _DESKTOP_INFO_CACHE[cache_key] = app_map[last]
+            return app_map[last]
+
+    if name:
+        nl = name.lower()
+        if nl in app_map:
+            _DESKTOP_INFO_CACHE[cache_key] = app_map[nl]
+            return app_map[nl]
+        nl_slug = nl.replace(" ", "-")
+        if nl_slug in app_map:
+            _DESKTOP_INFO_CACHE[cache_key] = app_map[nl_slug]
+            return app_map[nl_slug]
+
+    for key, app in app_map.items():
+        for aid in app_ids:
+            if not aid:
+                continue
+            al = aid.lower()
+            if len(al) >= 3 and (al in key or key in al):
+                _DESKTOP_INFO_CACHE[cache_key] = app
+                return app
+        if name and len(name) >= 3:
+            nl = name.lower()
+            if nl in key or key in nl:
+                _DESKTOP_INFO_CACHE[cache_key] = app
+                return app
+
+    _DESKTOP_INFO_CACHE[cache_key] = None
+    return None
+
+
 def get_app_icon_pixbuf(app_id, title="", size=64):
     theme = Gtk.IconTheme.get_default()
     aid = (app_id or "").lower()
+    t = (title or "").lower()
 
-    # 1. Direct DesktopAppInfo resolution
+    # 1. Resolve via DesktopAppInfo / AppInfo map
+    dinfo = find_desktop_info({"app_ids": [app_id] if app_id else [], "name": title})
+    if dinfo and dinfo.get_icon():
+        gicon = dinfo.get_icon()
+        info = theme.lookup_by_gicon(gicon, size, 0)
+        if info:
+            try:
+                pb = info.load_icon()
+                if pb:
+                    return pb
+            except Exception:
+                pass
+
+    # Direct Desktop candidates fallback
     desktop_cands = [
         f"{app_id}.desktop" if app_id else "",
         f"{aid}.desktop" if aid else "",
-        "google-chrome.desktop" if "chrome" in aid else "",
-        "com.google.Chrome.desktop" if "chrome" in aid else "",
-        "code.desktop" if "code" in aid else "",
-        "discord.desktop" if "discord" in aid else "",
-        "com.spotify.Client.desktop" if "spotify" in aid else "",
-        "steam.desktop" if "steam" in aid else "",
+        "google-chrome.desktop" if "chrome" in aid or "chrome" in t else "",
+        "com.google.Chrome.desktop" if "chrome" in aid or "chrome" in t else "",
+        "code.desktop" if "code" in aid or "code" in t else "",
+        "discord.desktop" if "discord" in aid or "discord" in t else "",
+        "com.spotify.Client.desktop" if "spotify" in aid or "spotify" in t else "",
+        "steam.desktop" if "steam" in aid or "steam" in t else "",
     ]
     for d in desktop_cands:
         if not d:
             continue
         try:
-            dinfo = Gio.DesktopAppInfo.new(d)
-            if dinfo and dinfo.get_icon():
-                gicon = dinfo.get_icon()
+            di = Gio.DesktopAppInfo.new(d)
+            if di and di.get_icon():
+                gicon = di.get_icon()
                 info = theme.lookup_by_gicon(gicon, size, 0)
                 if info:
                     pb = info.load_icon()
@@ -163,28 +254,32 @@ def get_app_icon_pixbuf(app_id, title="", size=64):
         candidates.append(aid)
         candidates.append(app_id.split(".")[-1])
         candidates.append(aid.split(".")[-1])
-        if "zen" in aid:
-            candidates.extend(["app.zen_browser.zen", "zen-browser", "zen"])
-        if "tauon" in aid:
-            candidates.extend(["com.github.taiko2k.tauonmb", "tauonmb", "tauon"])
-        if "rambox" in aid:
-            candidates.extend(["rambox", "com.rambox.Rambox"])
-        if "nautilus" in aid:
-            candidates.extend(["org.gnome.Nautilus", "system-file-manager"])
-        if "kitty" in aid:
-            candidates.extend(["kitty", "utilities-terminal"])
-        if "code" in aid:
-            candidates.extend(["vscode", "/usr/share/pixmaps/vscode.png", "com.visualstudio.code", "code"])
-        if "chrome" in aid or "chromium" in aid:
-            candidates.extend(["google-chrome", "google-chrome-stable", "com.google.Chrome", "chromium", "chromium-browser"])
-        if "discord" in aid or "vesktop" in aid:
-            candidates.extend(["discord", "vesktop", "com.discordapp.Discord"])
-        if "spotify" in aid:
-            candidates.extend(["com.spotify.Client", "spotify"])
-        if "steam" in aid:
-            candidates.extend(["steam", "com.valvesoftware.Steam"])
-        if "lutris" in aid:
-            candidates.extend(["net.lutris.Lutris", "lutris"])
+    if "zen" in aid or "zen" in t:
+        candidates.extend(["app.zen_browser.zen", "zen-browser", "zen"])
+    if "tauon" in aid or "tauon" in t:
+        candidates.extend(["com.github.taiko2k.tauonmb", "tauonmb", "tauon"])
+    if "rambox" in aid or "rambox" in t:
+        candidates.extend(["rambox", "com.rambox.Rambox"])
+    if "nautilus" in aid or "nautilus" in t or "files" in t:
+        candidates.extend(["org.gnome.Nautilus", "system-file-manager"])
+    if "kitty" in aid or "terminal" in t:
+        candidates.extend(["kitty", "utilities-terminal"])
+    if "code" in aid or "code" in t or "vscode" in t:
+        candidates.extend(["vscode", "/usr/share/pixmaps/vscode.png", "com.visualstudio.code", "code"])
+    if "chrome" in aid or "chromium" in aid or "chrome" in t:
+        candidates.extend(["google-chrome", "google-chrome-stable", "com.google.Chrome", "chromium", "chromium-browser"])
+    if "discord" in aid or "vesktop" in aid or "discord" in t:
+        candidates.extend(["discord", "vesktop", "com.discordapp.Discord"])
+    if "spotify" in aid or "spotify" in t:
+        candidates.extend(["com.spotify.Client", "spotify"])
+    if "steam" in aid or "steam" in t:
+        candidates.extend(["steam", "com.valvesoftware.Steam"])
+    if "lutris" in aid or "lutris" in t:
+        candidates.extend(["net.lutris.Lutris", "lutris"])
+    if "gimp" in aid or "gimp" in t:
+        candidates.extend(["org.gimp.GIMP", "gimp"])
+    if "telegram" in aid or "telegram" in t:
+        candidates.extend(["org.telegram.desktop", "telegram"])
 
     if title:
         candidates.append(title.lower().split()[0])
@@ -204,6 +299,13 @@ def get_app_icon_pixbuf(app_id, title="", size=64):
             if os.path.exists(pixmap):
                 try:
                     return GdkPixbuf.Pixbuf.new_from_file_at_scale(pixmap, size, size, True)
+                except Exception:
+                    pass
+        for ext in [".svg", ".png"]:
+            flatpak_ic = f"/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/{c}{ext}"
+            if os.path.exists(flatpak_ic):
+                try:
+                    return GdkPixbuf.Pixbuf.new_from_file_at_scale(flatpak_ic, size, size, True)
                 except Exception:
                     pass
         if theme.has_icon(c):

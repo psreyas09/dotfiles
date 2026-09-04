@@ -50,6 +50,18 @@
     ]
   },
   {
+    "name": "Spotify",
+    "icon": [
+      "com.spotify.Client",
+      "spotify"
+    ],
+    "cmd": "flatpak run com.spotify.Client",
+    "app_ids": [
+      "spotify",
+      "com.spotify.Client"
+    ]
+  },
+  {
     "name": "Lutris",
     "icon": [
       "net.lutris.Lutris",
@@ -92,6 +104,16 @@
     "app_ids": [
       "niri-settings",
       "niri-settings.py"
+    ]
+  },
+  {
+    "name": "Text Editor",
+    "icon": [
+      "org.gnome.TextEditor"
+    ],
+    "cmd": "gnome-text-editor",
+    "app_ids": [
+      "org.gnome.TextEditor"
     ]
   }
 ]
