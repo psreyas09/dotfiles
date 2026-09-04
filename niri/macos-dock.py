@@ -6,13 +6,17 @@ import json
 import signal
 import threading
 import subprocess
+import re
 
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
-from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf
+gi.require_version('Gio', '2.0')
+from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf, Gio
 
 PID_FILE = "/tmp/macos_dock.pid"
+PINNED_CONFIG_FILE = os.path.expanduser("~/.config/niri/dock-pinned.json")
+DOTFILE_PINNED_FILE = os.path.expanduser("~/dotfile/niri/dock-pinned.json")
 
 def enforce_single_instance():
     if os.path.exists(PID_FILE):
@@ -123,8 +127,64 @@ def get_app_icon_pixbuf(app_id, title="", size=44):
                 pass
     return None
 
-# User's exact requested pinned apps
-PINNED_APPS = [
+def find_desktop_info(item):
+    app_ids = item.get("app_ids", [])
+    names = [item.get("name", "")]
+    candidates = []
+    for aid in app_ids:
+        if not aid:
+            continue
+        candidates.extend([aid, aid + ".desktop", aid.lower(), aid.lower() + ".desktop"])
+        candidates.append(aid.split(".")[-1] + ".desktop")
+    for name in names:
+        if not name:
+            continue
+        n = name.lower().replace(" ", "-")
+        candidates.append(n + ".desktop")
+
+    seen = set()
+    for c in candidates:
+        if not c.endswith(".desktop"):
+            c += ".desktop"
+        if c in seen:
+            continue
+        seen.add(c)
+        try:
+            info = Gio.DesktopAppInfo.new(c)
+            if info:
+                return info
+        except (TypeError, Exception):
+            pass
+
+    # Search standard flatpak and system directories
+    search_dirs = [
+        "/var/lib/flatpak/exports/share/applications",
+        os.path.expanduser("~/.local/share/flatpak/exports/share/applications"),
+        "/usr/share/applications",
+        os.path.expanduser("~/.local/share/applications")
+    ]
+    for d in search_dirs:
+        if not os.path.exists(d):
+            continue
+        try:
+            for root, _, files in os.walk(d):
+                for f in files:
+                    if not f.endswith(".desktop"):
+                        continue
+                    fl = f.lower()
+                    for aid in app_ids:
+                        if aid and aid.lower() in fl:
+                            try:
+                                info = Gio.DesktopAppInfo.new_from_filename(os.path.join(root, f))
+                                if info:
+                                    return info
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+    return None
+
+DEFAULT_PINNED_APPS = [
     {
         "name": "Zen Browser",
         "icon": ["app.zen_browser.zen", "zen-browser", "zen"],
@@ -174,7 +234,8 @@ class MacOSDock(Gtk.Window):
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.TOP)
         GtkLayerShell.set_namespace(self, "dock")
-        GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.NONE)
+        # ON_DEMAND allows context menu to handle keyboard (Esc to close, Arrow keys to navigate)
+        GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.ON_DEMAND)
         GtkLayerShell.set_exclusive_zone(self, 0)
 
         # Centered at bottom
@@ -185,10 +246,15 @@ class MacOSDock(Gtk.Window):
 
         # State tracking
         self.is_mouse_over = False
+        self.is_menu_open = False
+        self.active_menu = None
         self.is_overview_open = False
         self.has_windows_on_workspace = False
         self.running_windows = []
         self.leave_timer_id = None
+
+        # Load pinned apps configuration
+        self.pinned_apps = self.load_pinned_apps()
 
         # Animation states (0% idle CPU)
         self.current_margin = 0.0
@@ -221,6 +287,73 @@ class MacOSDock(Gtk.Window):
         # Start low-overhead Niri stream listener
         self.start_niri_listener()
 
+    # --- Pinned Apps Persistence ---
+    def load_pinned_apps(self):
+        if os.path.exists(PINNED_CONFIG_FILE):
+            try:
+                with open(PINNED_CONFIG_FILE, "r") as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        return data
+            except Exception:
+                pass
+        return list(DEFAULT_PINNED_APPS)
+
+    def save_pinned_apps(self):
+        try:
+            os.makedirs(os.path.dirname(PINNED_CONFIG_FILE), exist_ok=True)
+            with open(PINNED_CONFIG_FILE, "w") as f:
+                json.dump(self.pinned_apps, f, indent=2)
+            if os.path.exists(os.path.dirname(DOTFILE_PINNED_FILE)):
+                with open(DOTFILE_PINNED_FILE, "w") as f:
+                    json.dump(self.pinned_apps, f, indent=2)
+        except Exception:
+            pass
+
+    def pin_app(self, item):
+        cmd = item.get("cmd") or ""
+        if not cmd:
+            dinfo = find_desktop_info(item)
+            if dinfo:
+                cmd_line = dinfo.get_commandline() or ""
+                cmd = re.sub(r'%[a-zA-Z]', '', cmd_line).strip()
+
+        entry = {
+            "name": item.get("name", "App"),
+            "icon": item.get("icon", []),
+            "cmd": cmd,
+            "app_ids": item.get("app_ids", [])
+        }
+
+        # Avoid duplicates
+        name_lower = entry["name"].lower()
+        if not any(p.get("name", "").lower() == name_lower for p in self.pinned_apps):
+            self.pinned_apps.append(entry)
+            self.save_pinned_apps()
+            self.rebuild_pinned_dock()
+
+    def unpin_app(self, item):
+        name_lower = item.get("name", "").lower()
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+
+        self.pinned_apps = [
+            p for p in self.pinned_apps
+            if p.get("name", "").lower() != name_lower and not any(aid in [a.lower() for a in p.get("app_ids", [])] for aid in app_ids)
+        ]
+        self.save_pinned_apps()
+        self.rebuild_pinned_dock()
+
+    def rebuild_pinned_dock(self):
+        for child in self.pinned_box.get_children():
+            self.pinned_box.remove(child)
+        self.pinned_widgets = []
+        for item in self.pinned_apps:
+            w = self.create_dock_item(item, is_dynamic=False)
+            self.pinned_box.pack_start(w, False, False, 0)
+            self.pinned_widgets.append((item, w))
+        self.pinned_box.show_all()
+        self.update_dock_data(self.has_windows_on_workspace, self.running_windows)
+
     def setup_ui(self):
         self.dock_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.dock_container.set_name("dock-container")
@@ -229,13 +362,15 @@ class MacOSDock(Gtk.Window):
         # macOS Frosted Glass Capsule
         self.card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.set_name("dock-card")
+        self.card.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.card.connect("button-press-event", self.on_card_button_press)
         self.dock_container.pack_start(self.card, False, False, 0)
 
-        # 1. Pinned Apps (Zen, Nautilus, Rambox, VS Code, Lutris)
+        # 1. Pinned Apps
         self.pinned_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.pack_start(self.pinned_box, False, False, 0)
 
-        # 2. Dynamic Running Apps (unpinned active apps, e.g. Kitty, Tauon, etc.)
+        # 2. Dynamic Running Apps (unpinned active apps)
         self.dynamic_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.pack_start(self.dynamic_box, False, False, 0)
 
@@ -251,15 +386,15 @@ class MacOSDock(Gtk.Window):
             "cmd": "nautilus trash:///",
             "app_ids": []
         }
-        self.trash_widget = self.create_dock_item(self.trash_item)
+        self.trash_widget = self.create_dock_item(self.trash_item, is_dynamic=False)
         self.card.pack_start(self.trash_widget, False, False, 0)
 
         self.pinned_widgets = []
         self.dynamic_widgets = []
 
         # Populate pinned apps
-        for item in PINNED_APPS:
-            w = self.create_dock_item(item)
+        for item in self.pinned_apps:
+            w = self.create_dock_item(item, is_dynamic=False)
             self.pinned_box.pack_start(w, False, False, 0)
             self.pinned_widgets.append((item, w))
 
@@ -274,7 +409,7 @@ class MacOSDock(Gtk.Window):
         vbox.set_halign(Gtk.Align.CENTER)
         btn.add(vbox)
 
-        # App Icon resolution (supports IconTheme, pixmaps, and direct paths)
+        # App Icon resolution
         pb = None
         size = 44
         theme = Gtk.IconTheme.get_default()
@@ -315,32 +450,403 @@ class MacOSDock(Gtk.Window):
         dot.get_style_context().add_class("inactive")
         vbox.pack_start(dot, False, False, 0)
 
+        # Event handling: left-click (clicked), right-click (button 3), middle-click (button 2)
+        btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        btn.connect("button-press-event", self.on_item_button_press, item, is_dynamic, win_id)
         btn.connect("clicked", self.on_item_clicked, item, win_id)
+
         btn._dot = dot
         btn._item = item
+        btn._is_dynamic = is_dynamic
         return btn
 
+    def on_item_button_press(self, btn, event, item, is_dynamic, win_id):
+        if event.button == 3:  # Right Click -> Context Menu
+            self.show_context_menu(btn, item, is_dynamic, win_id, event)
+            return True
+        elif event.button == 2:  # Middle Click -> Open New Window
+            self.open_new_window(item)
+            return True
+        return False
+
     def on_item_clicked(self, btn, item, win_id=None):
-        target_win = None
-        if win_id is not None:
-            target_win = next((w for w in self.running_windows if w["id"] == win_id), None)
+        matching_windows = self.get_windows_for_item(item)
 
-        if not target_win and item.get("app_ids"):
-            for w in self.running_windows:
-                aid = (w.get("app_id") or "").lower()
-                for match_id in item["app_ids"]:
-                    if match_id.lower() in aid or aid in match_id.lower():
-                        target_win = w
-                        break
-                if target_win:
-                    break
-
-        if target_win and target_win.get("id") is not None:
-            subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(target_win["id"])])
+        if matching_windows:
+            # If multiple windows exist and one is currently focused, cycle to the next window!
+            focused_idx = next((i for i, w in enumerate(matching_windows) if w.get("is_focused")), None)
+            if focused_idx is not None and len(matching_windows) > 1:
+                next_win = matching_windows[(focused_idx + 1) % len(matching_windows)]
+                subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(next_win["id"])])
+            else:
+                target_win = matching_windows[0]
+                subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(target_win["id"])])
         else:
             cmd = item.get("cmd")
             if cmd:
                 subprocess.Popen(cmd, shell=True)
+
+    # --- Windows & Action Discovery ---
+    def get_windows_for_item(self, item):
+        matches = []
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+        name = (item.get("name") or "").lower()
+        win_id = item.get("win_id")
+
+        for w in self.running_windows:
+            if win_id is not None and w.get("id") == win_id:
+                if w not in matches:
+                    matches.append(w)
+                continue
+
+            aid = (w.get("app_id") or "").lower()
+            matched = False
+            for a in app_ids:
+                if a in aid or aid in a:
+                    if w not in matches:
+                        matches.append(w)
+                    matched = True
+                    break
+            if matched:
+                continue
+
+            if not app_ids and aid:
+                if aid in name or name in aid:
+                    if w not in matches:
+                        matches.append(w)
+        return matches
+
+    def supports_new_window(self, item):
+        name = (item.get("name") or "").lower()
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+        known = ["zen", "browser", "firefox", "chrome", "chromium", "nautilus", "files", "code", "codium", "terminal", "kitty", "foot", "alacritty"]
+        if any(k in name for k in known):
+            return True
+        if any(any(k in a for k in known) for a in app_ids):
+            return True
+
+        dinfo = find_desktop_info(item)
+        if dinfo:
+            actions = dinfo.list_actions()
+            if "new-window" in actions or "new-empty-window" in actions:
+                return True
+        return False
+
+    def open_new_window(self, item):
+        name = (item.get("name") or "").lower()
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+
+        # Zen Browser
+        if "zen" in name or any("zen" in a for a in app_ids):
+            subprocess.Popen(["flatpak", "run", "app.zen_browser.zen", "--new-window"])
+            return
+
+        # Nautilus
+        if "nautilus" in name or "files" in name or any("nautilus" in a for a in app_ids):
+            subprocess.Popen(["nautilus", "--new-window"])
+            return
+
+        # VS Code
+        if "code" in name or any("code" in a for a in app_ids):
+            subprocess.Popen(["code", "--new-window"])
+            return
+
+        # Terminal
+        if "terminal" in name or "kitty" in name or any("kitty" in a for a in app_ids):
+            subprocess.Popen(["kitty"])
+            return
+
+        # Firefox
+        if "firefox" in name or any("firefox" in a for a in app_ids):
+            subprocess.Popen(["firefox", "--new-window"])
+            return
+
+        # Chrome
+        if "chrome" in name or any("chrome" in a for a in app_ids):
+            subprocess.Popen(["google-chrome", "--new-window"])
+            return
+
+        # Desktop actions lookup
+        dinfo = find_desktop_info(item)
+        if dinfo:
+            for act in ["new-window", "new-empty-window"]:
+                if act in dinfo.list_actions():
+                    try:
+                        dinfo.launch_action(act, None)
+                        return
+                    except Exception:
+                        pass
+
+        cmd = item.get("cmd")
+        if cmd:
+            subprocess.Popen(cmd, shell=True)
+
+    def get_extra_actions(self, item):
+        actions = []
+        name = (item.get("name") or "").lower()
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+
+        # Zen Browser
+        if "zen" in name or any("zen" in a for a in app_ids):
+            actions.append((
+                "New Private Window",
+                "security-high-symbolic",
+                lambda _: subprocess.Popen(["flatpak", "run", "app.zen_browser.zen", "--private-window"])
+            ))
+            return actions
+
+        # Firefox
+        if "firefox" in name or any("firefox" in a for a in app_ids):
+            actions.append((
+                "New Private Window",
+                "security-high-symbolic",
+                lambda _: subprocess.Popen(["firefox", "--private-window"])
+            ))
+            return actions
+
+        # Chrome
+        if "chrome" in name or "chromium" in name or any("chrome" in a for a in app_ids):
+            actions.append((
+                "New Incognito Window",
+                "security-high-symbolic",
+                lambda _: subprocess.Popen(["google-chrome", "--incognito"])
+            ))
+            return actions
+
+        # Query DesktopAppInfo for any other desktop actions
+        dinfo = find_desktop_info(item)
+        if dinfo:
+            for act in dinfo.list_actions():
+                if act in ["new-window", "new-empty-window"]:
+                    continue
+                act_label = dinfo.get_action_name(act)
+                act_icon = "system-run-symbolic"
+                act_lower = act.lower()
+                if "private" in act_lower or "incognito" in act_lower:
+                    act_icon = "security-high-symbolic"
+                elif "profile" in act_lower:
+                    act_icon = "avatar-default-symbolic"
+
+                def make_launcher(act=act, dinfo=dinfo):
+                    return lambda _: dinfo.launch_action(act, None)
+
+                actions.append((act_label, act_icon, make_launcher(act, dinfo)))
+
+        return actions
+
+    def quit_app(self, item):
+        windows = self.get_windows_for_item(item)
+        for w in windows:
+            wid = w.get("id")
+            if wid is not None:
+                subprocess.Popen(["niri", "msg", "action", "close-window", "--id", str(wid)])
+
+    def empty_trash(self):
+        trash_dir = os.path.expanduser("~/.local/share/Trash")
+        for sub in ["files", "info"]:
+            path = os.path.join(trash_dir, sub)
+            if os.path.exists(path):
+                try:
+                    for f in os.listdir(path):
+                        fp = os.path.join(path, f)
+                        try:
+                            if os.path.isdir(fp) and not os.path.islink(fp):
+                                import shutil
+                                shutil.rmtree(fp)
+                            else:
+                                os.remove(fp)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        try:
+            subprocess.Popen(["gio", "trash", "--empty"])
+        except Exception:
+            pass
+
+    def create_menu_item(self, label_text, icon_name=None, callback=None, is_header=False, is_danger=False):
+        item = Gtk.MenuItem()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        if icon_name:
+            img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
+            box.pack_start(img, False, False, 0)
+
+        lbl = Gtk.Label()
+        if is_header:
+            lbl.set_markup(f"<b>{GLib.markup_escape_text(label_text)}</b>")
+            item.set_sensitive(False)
+            item.get_style_context().add_class("menu-header")
+        else:
+            lbl.set_text(label_text)
+
+        lbl.set_xalign(0.0)
+        box.pack_start(lbl, True, True, 0)
+        item.add(box)
+
+        if is_danger:
+            item.get_style_context().add_class("menu-danger")
+
+        if callback and not is_header:
+            item.connect("activate", callback)
+
+        return item
+
+    # --- Context Menu Display ---
+    def show_context_menu(self, btn, item, is_dynamic, win_id, event):
+        if self.active_menu:
+            try:
+                self.active_menu.popdown()
+            except Exception:
+                pass
+
+        menu = Gtk.Menu()
+        menu.get_style_context().add_class("dock-menu")
+        self.active_menu = menu
+        self.is_menu_open = True
+
+        name = item.get("name", "Application")
+        is_trash = (name.lower() == "trash")
+
+        if is_trash:
+            # Trash Menu
+            menu.append(self.create_menu_item("Trash", is_header=True))
+            menu.append(Gtk.SeparatorMenuItem())
+            menu.append(self.create_menu_item(
+                "Open Trash",
+                "system-run-symbolic",
+                lambda _: subprocess.Popen("nautilus trash:///", shell=True)
+            ))
+            menu.append(self.create_menu_item(
+                "Empty Trash",
+                "edit-delete-symbolic",
+                lambda _: self.empty_trash()
+            ))
+        else:
+            windows = self.get_windows_for_item(item)
+            is_running = len(windows) > 0
+
+            # 1. Header with App Title & Running State
+            header_text = name
+            if is_running:
+                header_text += f"  •  Running ({len(windows)})" if len(windows) > 1 else "  •  Running"
+            menu.append(self.create_menu_item(header_text, is_header=True))
+            menu.append(Gtk.SeparatorMenuItem())
+
+            # 2. Open Windows List (GNOME/macOS Window Switcher)
+            if is_running:
+                for w in windows:
+                    w_title = w.get("title") or "Window"
+                    if len(w_title) > 42:
+                        w_title = w_title[:40] + "…"
+                    w_id = w.get("id")
+                    is_focused = w.get("is_focused", False)
+                    dot_prefix = "●  " if is_focused else "○  "
+                    w_label = f"{dot_prefix}{w_title}"
+                    menu.append(self.create_menu_item(
+                        w_label,
+                        "window-restore-symbolic",
+                        lambda _, wid=w_id: subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(wid)])
+                    ))
+                menu.append(Gtk.SeparatorMenuItem())
+
+            # 3. Main Launch Actions
+            # "Open"
+            menu.append(self.create_menu_item(
+                "Open",
+                "media-playback-start-symbolic",
+                lambda _: self.on_item_clicked(btn, item, win_id)
+            ))
+
+            # "Open in New Window"
+            if self.supports_new_window(item):
+                menu.append(self.create_menu_item(
+                    "Open in New Window",
+                    "window-new-symbolic",
+                    lambda _: self.open_new_window(item)
+                ))
+
+            # Extra Desktop Actions (e.g. New Private Window)
+            extra_actions = self.get_extra_actions(item)
+            for act_label, act_icon, act_fn in extra_actions:
+                menu.append(self.create_menu_item(act_label, act_icon, act_fn))
+
+            # 4. Dock Pinning Section
+            menu.append(Gtk.SeparatorMenuItem())
+            if is_dynamic:
+                menu.append(self.create_menu_item(
+                    "Pin to Dock",
+                    "view-pin-symbolic",
+                    lambda _: self.pin_app(item)
+                ))
+            else:
+                menu.append(self.create_menu_item(
+                    "Unpin from Dock",
+                    "view-pin-symbolic",
+                    lambda _: self.unpin_app(item)
+                ))
+
+            # 5. Quit Option (GNOME Quit)
+            if is_running:
+                menu.append(Gtk.SeparatorMenuItem())
+                quit_label = "Quit" if len(windows) <= 1 else f"Close All Windows ({len(windows)})"
+                menu.append(self.create_menu_item(
+                    quit_label,
+                    "application-exit-symbolic",
+                    lambda _: self.quit_app(item),
+                    is_danger=True
+                ))
+
+        menu.connect("deactivate", self.on_menu_deactivated)
+        menu.show_all()
+        menu.popup_at_widget(btn, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
+
+    def on_card_button_press(self, widget, event):
+        if event.button == 3:
+            if self.active_menu:
+                try:
+                    self.active_menu.popdown()
+                except Exception:
+                    pass
+
+            menu = Gtk.Menu()
+            menu.get_style_context().add_class("dock-menu")
+            self.active_menu = menu
+            self.is_menu_open = True
+
+            menu.append(self.create_menu_item("macOS Dock", is_header=True))
+            menu.append(Gtk.SeparatorMenuItem())
+            menu.append(self.create_menu_item(
+                "Niri Settings",
+                "preferences-system",
+                lambda _: subprocess.Popen(["/usr/bin/python3", "/home/sreyas/.config/niri/niri-settings.py"])
+            ))
+            menu.append(self.create_menu_item(
+                "Restart Dock",
+                "view-refresh-symbolic",
+                lambda _: self.restart_dock()
+            ))
+
+            menu.connect("deactivate", self.on_menu_deactivated)
+            menu.show_all()
+            menu.popup_at_pointer(event)
+            return True
+        return False
+
+    def restart_dock(self):
+        cleanup()
+        time.sleep(0.1)
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+    def on_menu_deactivated(self, menu):
+        self.is_menu_open = False
+        self.active_menu = None
+        GLib.timeout_add(150, self._check_after_menu_closed)
+
+    def _check_after_menu_closed(self):
+        if not self.is_mouse_over and not self.is_menu_open:
+            self.request_animation()
+        return False
 
     # --- Initial State Fetch ---
     def fetch_initial_state(self):
@@ -381,6 +887,8 @@ class MacOSDock(Gtk.Window):
     def on_leave_notify(self, widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
+        if self.is_menu_open:
+            return False
         if self.leave_timer_id:
             GLib.source_remove(self.leave_timer_id)
         # 400ms delay before sliding down
@@ -388,6 +896,8 @@ class MacOSDock(Gtk.Window):
         return False
 
     def _on_delayed_leave(self):
+        if self.is_menu_open:
+            return False
         self.is_mouse_over = False
         self.leave_timer_id = None
         self.request_animation()
@@ -397,13 +907,16 @@ class MacOSDock(Gtk.Window):
         # 1. Always visible during Overview!
         if self.is_overview_open:
             return True
-        # 2. Always visible when hovered
+        # 2. Always visible when right-click menu is open!
+        if self.is_menu_open:
+            return True
+        # 3. Always visible when hovered
         if self.is_mouse_over:
             return True
-        # 3. Always visible when current workspace has NO windows (empty desktop)
+        # 4. Always visible when current workspace has NO windows (empty desktop)
         if not self.has_windows_on_workspace:
             return True
-        # 4. Otherwise hidden (auto-hide)
+        # 5. Otherwise hidden (auto-hide)
         return False
 
     def request_animation(self):
@@ -435,7 +948,7 @@ class MacOSDock(Gtk.Window):
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, int(self.current_margin))
             Gtk.Widget.set_opacity(self.card, 1.0 if target >= 0 else 0.0)
             self.is_animating = False
-            return False # Animation complete: unhook callback for 0.0% CPU!
+            return False  # Animation complete: unhook callback for 0.0% CPU!
 
     # --- Live State Updates (Showing All Active Apps) ---
     def update_dock_data(self, has_windows, windows):
@@ -465,7 +978,7 @@ class MacOSDock(Gtk.Window):
                 ctx.add_class("inactive")
 
         # 2. Dynamic unpinned running apps (Show ALL open apps!)
-        pinned_app_id_list = [aid.lower() for item in PINNED_APPS for aid in item.get("app_ids", [])]
+        pinned_app_id_list = [aid.lower() for item in self.pinned_apps for aid in item.get("app_ids", [])]
         unpinned_windows = []
         seen_unpinned = set()
 
@@ -497,7 +1010,8 @@ class MacOSDock(Gtk.Window):
                     "name": display_name,
                     "icon": [aid],
                     "cmd": "",
-                    "app_ids": [aid] if aid else []
+                    "app_ids": [aid] if aid else [],
+                    "win_id": w.get("id")
                 }
                 widget = self.create_dock_item(item, is_dynamic=True, win_id=w.get("id"))
                 widget._app_key = app_key
@@ -584,7 +1098,7 @@ class MacOSDock(Gtk.Window):
         t = threading.Thread(target=listener, daemon=True)
         t.start()
 
-    # --- Styling (macOS Frosted Glass) ---
+    # --- Styling (macOS Frosted Glass & GNOME Context Menu) ---
     def apply_css(self):
         theme_path = "/home/sreyas/.config/waybar/current-theme.css"
         css_provider = Gtk.CssProvider()
@@ -646,6 +1160,59 @@ class MacOSDock(Gtk.Window):
             background-color: rgba(255, 255, 255, 0.22);
             min-width: 1px;
             margin: 8px 6px 10px 6px;
+        }}
+
+        /* Context Menu (macOS & GNOME Frosted Glass Styling) */
+        window.popup, window.popup menu {{
+            background-color: transparent;
+        }}
+
+        menu.dock-menu {{
+            background-color: alpha(@bg-color, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 16px;
+            padding: 6px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+        }}
+
+        menu.dock-menu menuitem {{
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: @fg-color;
+            font-size: 13px;
+            font-weight: 500;
+            margin: 1px 0;
+        }}
+
+        menu.dock-menu menuitem:hover {{
+            background-color: alpha(@accent-purple, 0.35);
+            color: #FFFFFF;
+        }}
+
+        menu.dock-menu menuitem.menu-header,
+        menu.dock-menu menuitem.menu-header:disabled,
+        menu.dock-menu menuitem.menu-header label,
+        menu.dock-menu menuitem.menu-header:disabled label {{
+            color: alpha(@fg-color, 0.75);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            padding: 4px 12px 4px 12px;
+        }}
+
+        menu.dock-menu menuitem.menu-header:hover {{
+            background-color: transparent;
+        }}
+
+        menu.dock-menu menuitem.menu-danger:hover {{
+            background-color: rgba(235, 77, 75, 0.38);
+            color: #FFFFFF;
+        }}
+
+        menu.dock-menu separator {{
+            background-color: rgba(255, 255, 255, 0.12);
+            min-height: 1px;
+            margin: 4px 6px;
         }}
         """
         css_provider.load_from_data(css.encode('utf-8'))
