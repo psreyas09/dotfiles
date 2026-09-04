@@ -50,18 +50,6 @@
     ]
   },
   {
-    "name": "Spotify",
-    "icon": [
-      "com.spotify.Client",
-      "spotify"
-    ],
-    "cmd": "flatpak run com.spotify.Client",
-    "app_ids": [
-      "spotify",
-      "com.spotify.Client"
-    ]
-  },
-  {
     "name": "Lutris",
     "icon": [
       "net.lutris.Lutris",

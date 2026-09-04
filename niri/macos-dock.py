@@ -1061,7 +1061,8 @@ class MacOSDock(Gtk.Window):
 
         # High-performance Cairo DrawingArea for 120Hz smooth magnification & flowing wave
         da = Gtk.DrawingArea()
-        da.set_size_request(48, 68)
+        da.set_has_window(False)
+        da.set_size_request(48, 70)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
         da.current_scale = 1.0
@@ -1070,6 +1071,7 @@ class MacOSDock(Gtk.Window):
         da.current_x_off = 0.0
         da.target_x = 0.0
         da.x_vel = 0.0
+        da.is_running = is_dynamic
         da._pb = pb
         da.connect("draw", self.on_icon_draw)
         vbox.pack_start(da, True, True, 0)
@@ -1106,7 +1108,7 @@ class MacOSDock(Gtk.Window):
             return False
         alloc = widget.get_allocation()
         w = alloc.width if alloc.width > 0 else 48
-        h = alloc.height if alloc.height > 0 else 68
+        h = alloc.height if alloc.height > 0 else 70
 
         scale = getattr(widget, "current_scale", 1.0)
         x_off = getattr(widget, "current_x_off", 0.0)
@@ -1122,7 +1124,7 @@ class MacOSDock(Gtk.Window):
         # Anchor to bottom baseline:
         # As it scales up, it grows upward and lifts smoothly above the dock
         extra_lift = (scale - 1.0) * 12.0 + jump
-        y = (h - 4.0) - target_size - extra_lift
+        y = (h - 7.0) - target_size - extra_lift
 
         cr.save()
         cr.reset_clip()  # Allows drawing magnified and parted icons outside the 48px box without clipping
@@ -1133,6 +1135,24 @@ class MacOSDock(Gtk.Window):
         cr.get_source().set_filter(cairo.FILTER_BILINEAR)
         cr.paint()
         cr.restore()
+
+        # Draw active running indicator dot that moves with the logo horizontally and lifts with jumps!
+        if getattr(widget, "is_running", False):
+            cr.save()
+            cr.reset_clip()
+            dot_r = 3.0  # Crisp 6.0px diameter dot (clearer and bigger than tiny static bullet text)
+            dot_x = (w / 2.0) + x_off
+            dot_y = (h - 3.5) - (jump * 0.25)
+            cr.arc(dot_x, dot_y, dot_r, 0, 2 * math.pi)
+
+            succ, rgba = widget.get_style_context().lookup_color("accent-purple")
+            if succ:
+                cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 0.95)
+            else:
+                cr.set_source_rgba(0.25, 0.46, 0.77, 0.95)
+            cr.fill()
+            cr.restore()
+
         return False
 
     def on_item_button_press(self, btn, event, item, is_dynamic, win_id):
@@ -1334,8 +1354,8 @@ class MacOSDock(Gtk.Window):
 
     def on_bounce_tick(self, widget, frame_clock):
         now = time.time()
-        MAX_JUMP = 12.0
-        CYCLE = 0.52
+        MAX_JUMP = 16.0
+        CYCLE = 0.50
         JUMP_DUR = 0.38
         TIMEOUT = 14.0
 
@@ -1418,9 +1438,9 @@ class MacOSDock(Gtk.Window):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
-        DISTANCE = 110.0  # BuildUI DISTANCE
-        SCALE = 1.55      # BuildUI SCALE factor
-        NUDGE = 18.0      # BuildUI NUDGE (parting displacement)
+        DISTANCE = 120.0  # Wave influence radius in pixels
+        SCALE = 1.55      # Max magnification factor at cursor center
+        NUDGE = 14.0      # Max parting displacement (nudge) away from cursor
 
         buttons = self.get_all_icon_buttons()
         any_active = False
@@ -1439,13 +1459,18 @@ class MacOSDock(Gtk.Window):
             abs_d = abs(d)
 
             if abs_d < DISTANCE:
-                # Smooth bell curve for scale
-                target_scale = 1.0 + (SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * abs_d / DISTANCE))
-                # BuildUI parting nudge away from mouse
-                target_x = (-d / DISTANCE) * NUDGE * target_scale
+                u = abs_d / DISTANCE
+                # Smooth cosine bell curve: 1.0 at edge (u=1), SCALE at center (u=0)
+                target_scale = 1.0 + (SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * u))
+                # Smooth sine half-wave for parting nudge:
+                # 0 displacement under cursor (u=0), peaks at mid-distance (u=0.5), smoothly returns to 0 at edge (u=1)
+                # If mouse is to the right (d > 0), icon pushes left (negative x)
+                # If mouse is to the left (d < 0), icon pushes right (positive x)
+                target_x = -math.copysign(math.sin(math.pi * u) * NUDGE, d) if abs_d > 0.5 else 0.0
             else:
+                # Outside wave radius: completely balanced and stationary
                 target_scale = 1.0
-                target_x = -1.0 * (1.0 if d > 0 else -1.0) * NUDGE
+                target_x = 0.0
 
             da.target_scale = target_scale
             da.target_x = target_x
@@ -1534,8 +1559,9 @@ class MacOSDock(Gtk.Window):
                 da.current_x_off = tx
                 da.x_vel = 0.0
 
-        # Invalidate the card so all nudged and magnified icons repaint smoothly
+        # Invalidate the card and window so all nudged and magnified icons repaint smoothly
         self.card.queue_draw()
+        self.queue_draw()
 
         if not any_moving:
             all_base = all(
@@ -1552,6 +1578,7 @@ class MacOSDock(Gtk.Window):
                         btn._da.x_vel = 0.0
                         btn._da.target_x = 0.0
                 self.card.queue_draw()
+                self.queue_draw()
             self.is_wave_animating = False
             self.last_wave_time = None
             return False
@@ -2061,7 +2088,8 @@ class MacOSDock(Gtk.Window):
         dt = min(0.05, now - self.last_anim_time)
         self.last_anim_time = now
 
-        target = 0.0 if self.should_be_visible() else -68.0
+        HIDDEN_MARGIN = -125.0
+        target = 0.0 if self.should_be_visible() else HIDDEN_MARGIN
         diff = target - self.current_margin
 
         if abs(diff) > 0.5:
@@ -2069,7 +2097,7 @@ class MacOSDock(Gtk.Window):
             self.current_margin += diff * min(1.0, dt * speed)
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, int(self.current_margin))
 
-            progress = max(0.0, min(1.0, (self.current_margin - (-68.0)) / (0.0 - (-68.0))))
+            progress = max(0.0, min(1.0, (self.current_margin - HIDDEN_MARGIN) / (0.0 - HIDDEN_MARGIN)))
             Gtk.Widget.set_opacity(self.card, progress)
             return True
         else:
@@ -2106,17 +2134,20 @@ class MacOSDock(Gtk.Window):
 
         for item, w in self.pinned_widgets:
             dot = getattr(w, "_dot", None)
-            if not dot:
-                continue
+            da = getattr(w, "_da", None)
             is_running = any(
                 any(match_id.lower() in aid or aid in match_id.lower() for match_id in item.get("app_ids", []))
                 for aid in running_app_ids
             )
-            ctx = dot.get_style_context()
-            if is_running:
-                ctx.remove_class("inactive")
-            else:
-                ctx.add_class("inactive")
+            if dot:
+                ctx = dot.get_style_context()
+                if is_running:
+                    ctx.remove_class("inactive")
+                else:
+                    ctx.add_class("inactive")
+            if da and getattr(da, "is_running", False) != is_running:
+                da.is_running = is_running
+                da.queue_draw()
 
         # 2. Dynamic unpinned running apps (Show ALL open apps!)
         pinned_app_id_list = [aid.lower() for item in self.pinned_apps for aid in item.get("app_ids", [])]
@@ -2193,6 +2224,9 @@ class MacOSDock(Gtk.Window):
                 dot = getattr(widget, "_dot", None)
                 if dot:
                     dot.get_style_context().remove_class("inactive")
+                da = getattr(widget, "_da", None)
+                if da:
+                    da.is_running = True
 
                 self.dynamic_box.pack_start(widget, False, False, 0)
                 self.dynamic_widgets.append(widget)
@@ -2289,7 +2323,7 @@ class MacOSDock(Gtk.Window):
 
         #dock-container {{
             background: transparent;
-            padding: 0 0 10px 0;
+            padding: 38px 40px 10px 40px;
         }}
 
         /* macOS Glass Dock Capsule */
@@ -2333,16 +2367,9 @@ class MacOSDock(Gtk.Window):
             -gtk-icon-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
         }}
 
-        /* Running Indicator Dot (macOS Style) */
+        /* Running Indicator Dot (macOS Style: rendered dynamically in Cairo) */
         #running-dot {{
-            font-size: 8px;
-            color: @accent-purple;
-            padding: 0;
-            margin-top: -3px;
-        }}
-
-        #running-dot.inactive {{
-            opacity: 0.0;
+            display: none;
         }}
 
         #dock-separator {{
