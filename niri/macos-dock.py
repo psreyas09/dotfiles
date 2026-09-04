@@ -1076,9 +1076,11 @@ class MacOSDock(Gtk.Window):
         da.connect("draw", self.on_icon_draw)
         vbox.pack_start(da, True, True, 0)
 
-        # macOS Running Indicator Dot
+        # macOS Running Indicator Dot (hidden Gtk.Label since Cairo renders dynamic dot)
         dot = Gtk.Label(label="•")
         dot.set_name("running-dot")
+        dot.set_no_show_all(True)
+        dot.hide()
         dot.get_style_context().add_class("inactive")
         vbox.pack_start(dot, False, False, 0)
 
@@ -2369,7 +2371,8 @@ class MacOSDock(Gtk.Window):
 
         /* Running Indicator Dot (macOS Style: rendered dynamically in Cairo) */
         #running-dot {{
-            display: none;
+            opacity: 0.0;
+            font-size: 0px;
         }}
 
         #dock-separator {{
