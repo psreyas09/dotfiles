@@ -402,6 +402,8 @@ class MacOSDock(Gtk.Window):
         btn = Gtk.Button()
         btn.set_name("dock-item")
         btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.set_can_focus(False)
+        btn.set_focus_on_click(False)
         btn.set_tooltip_text(item["name"])
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -1153,16 +1155,25 @@ class MacOSDock(Gtk.Window):
             padding: 5px 10px 2px 10px;
         }}
 
-        #dock-item {{
+        #dock-item,
+        #dock-item:focus,
+        #dock-item:active,
+        #dock-item:focus:hover {{
             background: transparent;
             border: none;
+            outline: none;
+            outline-style: none;
+            outline-width: 0;
+            -gtk-outline-radius: 0;
+            box-shadow: none;
             border-radius: 12px;
             padding: 4px 6px 2px 6px;
             margin: 0 2px;
             min-width: 48px;
         }}
 
-        #dock-item:hover {{
+        #dock-item:hover,
+        #dock-item:focus:hover {{
             background-color: rgba(255, 255, 255, 0.18);
         }}
 
