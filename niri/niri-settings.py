@@ -229,6 +229,100 @@ def get_power_profile():
 def set_power_profile(profile):
     async_cmd(f'busctl set-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles ActiveProfile s "{profile}"')
 
+HOWDY_CONFIG_PATH = "/usr/local/etc/howdy/config.ini"
+HOWDY_BIN_PATH = "/usr/local/bin/howdy"
+
+def get_howdy_status():
+    if not os.path.exists(HOWDY_CONFIG_PATH):
+        return False
+    try:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(HOWDY_CONFIG_PATH)
+        return not cfg.getboolean("core", "disabled", fallback=False)
+    except Exception:
+        return False
+
+def get_howdy_models_info():
+    models_dir = "/usr/local/etc/howdy/models"
+    user_model = os.path.join(models_dir, "sreyas.dat")
+    if os.path.exists(user_model):
+        try:
+            st = os.stat(user_model)
+            import datetime
+            mod_time = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%b %d, %Y")
+            return {
+                "enrolled": True,
+                "user": "sreyas",
+                "file": user_model,
+                "modified": mod_time,
+                "size_kb": round(st.st_size / 1024, 1)
+            }
+        except Exception:
+            pass
+    return {"enrolled": False, "user": "sreyas", "file": None, "modified": "", "size_kb": 0}
+
+def get_howdy_pam_services():
+    services = {}
+    for svc in ["sudo", "swaylock", "gdm-password"]:
+        path = f"/etc/pam.d/{svc}"
+        configured = False
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    configured = "pam_howdy.so" in f.read()
+            except Exception:
+                pass
+        services[svc] = configured
+    return services
+
+def set_howdy_status(enable: bool, callback=None):
+    """Toggles Howdy face unlock asynchronously across multiple privilege escalation tiers."""
+    def worker():
+        val_str = "false" if enable else "true"
+        arg_val = "0" if enable else "1"
+        success = False
+
+        # Tier 1: Direct file write if writable
+        try:
+            if os.path.exists(HOWDY_CONFIG_PATH) and os.access(HOWDY_CONFIG_PATH, os.W_OK):
+                with open(HOWDY_CONFIG_PATH, "r") as f:
+                    text = f.read()
+                new_text, count = re.subn(r"^(\s*disabled\s*=\s*).*$", rf"\g<1>{val_str}", text, flags=re.MULTILINE)
+                if count > 0:
+                    with open(HOWDY_CONFIG_PATH, "w") as f:
+                        f.write(new_text)
+                    success = True
+        except Exception as e:
+            print(f"Direct howdy config write failed: {e}")
+
+        # Tier 2: Non-interactive sudo (if NOPASSWD configured)
+        if not success:
+            try:
+                res = subprocess.run(["sudo", "-n", HOWDY_BIN_PATH, "disable", arg_val],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+                if res.returncode == 0:
+                    success = True
+            except Exception:
+                pass
+
+        # Tier 3: PolicyKit graphical authentication (prompts via lxpolkit if needed, also sets wheel group write for future instant toggles)
+        if not success:
+            try:
+                cmd = f"{HOWDY_BIN_PATH} disable {arg_val} && chgrp wheel {HOWDY_CONFIG_PATH} && chmod 664 {HOWDY_CONFIG_PATH}"
+                res = subprocess.run(["pkexec", "sh", "-c", cmd],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+                if res.returncode == 0:
+                    success = True
+            except Exception as e:
+                print(f"pkexec howdy disable failed: {e}")
+
+        final_state = get_howdy_status()
+        if callback:
+            GLib.idle_add(callback, success, final_state)
+
+    threading.Thread(target=worker, daemon=True).start()
+
 
 class SettingsCard(Gtk.Box):
     """Modern iOS / macOS styled card container with 14px rounded corners"""
@@ -332,6 +426,7 @@ class NiriSettingsApp(Gtk.Window):
             "notifications": self.page_notifications,
             "defaults": self.page_defaults,
             "power": self.page_power,
+            "security": self.page_security,
             "storage": self.page_storage,
             "shortcuts": self.page_shortcuts,
             "about": self.page_about,
@@ -390,6 +485,7 @@ class NiriSettingsApp(Gtk.Window):
         self.add_nav_item("notifications", "Notifications & DND", "preferences-system-notifications")
         self.add_nav_item("defaults", "Default Applications", "preferences-desktop-default-applications")
         self.add_nav_item("power", "Power & Performance", "system-lock-screen")
+        self.add_nav_item("security", "Security & Face Unlock", "dialog-password")
         self.add_nav_item("storage", "Storage & Maintenance", "drive-harddisk")
         self.add_nav_item("shortcuts", "Shortcuts Reference", "preferences-desktop-keyboard-shortcuts")
         self.add_nav_item("about", "About System", "dialog-information")
@@ -1282,6 +1378,17 @@ class NiriSettingsApp(Gtk.Window):
             auto_lock_switch
         ))
 
+        # Howdy Face Recognition Quick Toggle
+        power_face_switch = Gtk.Switch()
+        power_face_switch.set_active(get_howdy_status())
+        power_face_switch.connect("state-set", lambda sw, st: set_howdy_status(st, lambda ok, final: sw.set_active(final)))
+        lock_card.add_row(create_setting_row(
+            "dialog-password",
+            "Howdy Face Recognition Unlock",
+            "Unlock Swaylock and authenticate sudo with your face using the IR camera",
+            power_face_switch
+        ))
+
         # Power Action Buttons
         vbox.pack_start(Gtk.Label(label="SYSTEM ACTIONS", xalign=0, name="section-caption"), False, False, 0)
         action_card = SettingsCard()
@@ -1302,7 +1409,137 @@ class NiriSettingsApp(Gtk.Window):
         return scroll
 
     # ==========================================
-    # PAGE 11: STORAGE & MAINTENANCE (NEW)
+    # PAGE: SECURITY & FACE UNLOCK
+    # ==========================================
+    def page_security(self):
+        scroll, vbox = self.make_page_container("Security & Face Unlock", "Facial recognition authentication via Howdy for sudo commands, lock screen, and login")
+
+        # 1. Master Face Unlock Card
+        vbox.pack_start(Gtk.Label(label="BIOMETRIC AUTHENTICATION", xalign=0, name="section-caption"), False, False, 0)
+        face_card = SettingsCard()
+        vbox.pack_start(face_card, False, False, 0)
+
+        is_howdy_on = get_howdy_status()
+        face_switch = Gtk.Switch()
+        face_switch.set_active(is_howdy_on)
+
+        status_lbl = Gtk.Label(label="Active in PAM" if is_howdy_on else "Disabled (Password Only)")
+        status_lbl.set_name("badge-label-active" if is_howdy_on else "badge-label-muted")
+
+        def on_howdy_toggled(switch, state):
+            switch.set_sensitive(False)
+            status_lbl.set_text("Updating...")
+            def on_done(success, final_state):
+                switch.set_sensitive(True)
+                switch.set_active(final_state)
+                if final_state:
+                    status_lbl.set_text("Active in PAM")
+                    status_lbl.set_name("badge-label-active")
+                else:
+                    status_lbl.set_text("Disabled (Password Only)")
+                    status_lbl.set_name("badge-label-muted")
+            set_howdy_status(state, on_done)
+
+        face_switch.connect("state-set", on_howdy_toggled)
+
+        face_card.add_row(create_setting_row(
+            "dialog-password",
+            "Howdy Face Unlock",
+            "Authenticate with your face for sudo commands, Swaylock lock screen, and system login",
+            face_switch
+        ))
+
+        face_card.add_row(create_setting_row(
+            "security-high",
+            "PAM Authentication Status",
+            "When enabled, pam_howdy.so triggers your infrared sensor before requesting a password",
+            status_lbl
+        ))
+
+        # 2. Target Services
+        vbox.pack_start(Gtk.Label(label="PROTECTED PAM SERVICES", xalign=0, name="section-caption"), False, False, 0)
+        pam_card = SettingsCard()
+        vbox.pack_start(pam_card, False, False, 0)
+
+        pam_services = get_howdy_pam_services()
+        pam_card.add_row(create_setting_row(
+            "preferences-system",
+            "Terminal & Sudo Elevation",
+            "Running 'sudo' commands in terminal and elevation prompts uses facial recognition",
+            Gtk.Label(label="Active (/etc/pam.d/sudo)" if pam_services.get("sudo") else "Not Configured")
+        ))
+
+        pam_card.add_row(create_setting_row(
+            "system-lock-screen",
+            "Lock Screen (Swaylock)",
+            "Screen locks after idle or Super+Escape; looking at camera unlocks screen automatically",
+            Gtk.Label(label="Active (/etc/pam.d/swaylock)" if pam_services.get("swaylock") else "Not Configured")
+        ))
+
+        pam_card.add_row(create_setting_row(
+            "avatar-default",
+            "Login Manager (GDM)",
+            "Log in to Niri desktop session at system boot with face identification",
+            Gtk.Label(label="Active (/etc/pam.d/gdm-password)" if pam_services.get("gdm-password") else "Not Configured")
+        ))
+
+        # 3. Biometric Profiles & Diagnostics
+        vbox.pack_start(Gtk.Label(label="ENROLLED BIOMETRIC PROFILES", xalign=0, name="section-caption"), False, False, 0)
+        profile_card = SettingsCard()
+        vbox.pack_start(profile_card, False, False, 0)
+
+        model_info = get_howdy_models_info()
+        profile_desc = f"Model: {model_info['file']} • Updated {model_info['modified']} ({model_info['size_kb']} KB)" if model_info["enrolled"] else "No enrolled face models found"
+        profile_card.add_row(create_setting_row(
+            "user-available",
+            f"User Profile: {model_info['user']}",
+            profile_desc,
+            Gtk.Label(label="Enrolled & Ready" if model_info["enrolled"] else "Not Enrolled")
+        ))
+
+        profile_card.add_row(create_setting_row(
+            "camera-web",
+            "IR Sensor Hardware",
+            "Infrared camera /dev/video0 • Certainty: 3.5 • Timeout: 4s • Clamshell protection active",
+            Gtk.Label(label="/dev/video0")
+        ))
+
+        # 4. Actions & Testing Card
+        vbox.pack_start(Gtk.Label(label="FACE RECOGNITION ACTIONS", xalign=0, name="section-caption"), False, False, 0)
+        action_card = SettingsCard()
+        vbox.pack_start(action_card, False, False, 0)
+
+        test_btn = Gtk.Button(label="Test Camera Feed")
+        test_btn.connect("clicked", lambda *_: async_cmd("kitty --title 'Howdy Camera Test' bash -c 'echo Testing Howdy camera feed...; sudo howdy test; read -p \"Press Enter to exit...\"'"))
+        action_card.add_row(create_setting_row(
+            "camera-web",
+            "Live Camera & Landmark Test",
+            "Open real-time OpenCV window to verify camera feed and facial feature detection",
+            test_btn
+        ))
+
+        add_btn = Gtk.Button(label="Add Face Model...")
+        add_btn.connect("clicked", lambda *_: async_cmd("kitty --title 'Howdy Add Model' bash -c 'sudo howdy add; read -p \"Press Enter to exit...\"'"))
+        action_card.add_row(create_setting_row(
+            "face-smile",
+            "Train Additional Face Angle",
+            "Add another facial model (e.g. different lighting, glasses on/off) to increase accuracy",
+            add_btn
+        ))
+
+        list_btn = Gtk.Button(label="List Models...")
+        list_btn.connect("clicked", lambda *_: async_cmd("kitty --title 'Howdy Face Models' bash -c 'sudo howdy list; echo \"\"; read -p \"Press Enter to exit...\"'"))
+        action_card.add_row(create_setting_row(
+            "preferences-desktop-remote-desktop",
+            "Manage Enrolled Models",
+            "List or delete enrolled facial recognition models",
+            list_btn
+        ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE: STORAGE & MAINTENANCE
     # ==========================================
     def page_storage(self):
         scroll, vbox = self.make_page_container("Storage & Maintenance", "Local disk utilization, system storage overview, and temporary cache cleaning")
@@ -1610,6 +1847,26 @@ class NiriSettingsApp(Gtk.Window):
             font-size: 11px;
             font-weight: 700;
             color: @accent-color;
+        }}
+
+        #badge-label-active {{
+            background-color: rgba(46, 204, 113, 0.20);
+            border: 1px solid rgba(46, 204, 113, 0.45);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2ecc71;
+        }}
+
+        #badge-label-muted {{
+            background-color: rgba(231, 76, 60, 0.20);
+            border: 1px solid rgba(231, 76, 60, 0.40);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #e74c3c;
         }}
 
         #wall-preview-img {{
