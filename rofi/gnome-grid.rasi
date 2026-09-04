@@ -1,0 +1,146 @@
+/**
+ * GNOME 40+ Activities Style Grid Theme for Rofi (rofi-wayland)
+ * Adwaita Dark Design Framework:
+ * - Background: #242424df
+ * - Foreground: #f6f5f4ff
+ * - Accent / Focus Ring: #3584e4ff
+ */
+
+configuration {
+    modi: "drun";
+    show-icons: true;
+    display-drun: "";
+    drun-display-format: "{name}";
+}
+
+* {
+    font: "Adwaita Sans 11";
+    background-color: transparent;
+    text-color: #f6f5f4ff;
+    margin: 0px;
+    padding: 0px;
+    spacing: 0px;
+}
+
+window {
+    fullscreen: true;
+    transparency: "real";
+    background-color: #242424df;
+    padding: 10% 12%;
+    children: [ mainbox ];
+}
+
+mainbox {
+    orientation: vertical;
+    spacing: 36px;
+    background-color: transparent;
+    children: [ inputbar, listview ];
+}
+
+inputbar {
+    background-color: transparent;
+    margin: 0% 25% 12px 25%;
+    children: [ entry ];
+}
+
+entry {
+    background-color: #323232cc;
+    text-color: #f6f5f4ff;
+    placeholder: "Type to search...";
+    placeholder-color: #9a9996bb;
+    border-radius: 24px;
+    border: 2px solid;
+    border-color: #ffffff18;
+    padding: 12px 24px;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    cursor: text;
+}
+
+listview {
+    layout: vertical;
+    columns: 6;
+    lines: 4;
+    spacing: 24px;
+    cycle: true;
+    dynamic: true;
+    background-color: transparent;
+    scrollbar: false;
+}
+
+element {
+    orientation: vertical;
+    children: [ element-icon, element-text ];
+    spacing: 12px;
+    padding: 18px 12px;
+    border-radius: 18px;
+    background-color: transparent;
+    text-color: #f6f5f4ff;
+    cursor: pointer;
+    border: 2px solid;
+    border-color: transparent;
+}
+
+element normal.normal {
+    background-color: transparent;
+    text-color: #f6f5f4ff;
+}
+
+element normal.urgent {
+    background-color: transparent;
+    text-color: #e01b24ff;
+}
+
+element normal.active {
+    background-color: transparent;
+    text-color: #3584e4ff;
+}
+
+element selected.normal {
+    background-color: #ffffff18;
+    border-color: #3584e4ff;
+    text-color: #ffffff;
+}
+
+element selected.urgent {
+    background-color: #ffffff18;
+    border-color: #e01b24ff;
+    text-color: #e01b24ff;
+}
+
+element selected.active {
+    background-color: #ffffff18;
+    border-color: #3584e4ff;
+    text-color: #3584e4ff;
+}
+
+element alternate.normal {
+    background-color: transparent;
+    text-color: #f6f5f4ff;
+}
+
+element alternate.urgent {
+    background-color: transparent;
+    text-color: #e01b24ff;
+}
+
+element alternate.active {
+    background-color: transparent;
+    text-color: #3584e4ff;
+}
+
+element-icon {
+    size: 72px;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    cursor: pointer;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+    cursor: pointer;
+}

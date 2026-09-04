@@ -10,7 +10,7 @@
 
     "custom/launcher": {
         "format": "",
-        "on-click": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
+        "on-click": "rofi -drun-use-desktop-cache -show drun -theme ~/.config/rofi/gnome-grid.rasi",
         "on-click-right": "fuzzel",
         "tooltip": "All Applications"
     },

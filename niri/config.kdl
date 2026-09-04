@@ -209,6 +209,14 @@ layer-rule {
     place-within-backdrop true
 }
 
+// Hardware-accelerated background blur for Rofi Activities grid
+layer-rule {
+    match namespace="^rofi$"
+    background-effect {
+        blur true
+    }
+}
+
 spawn-at-startup "lxpolkit"
 
 spawn-at-startup "sh" "-c" "killall waybar; waybar"
