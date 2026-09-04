@@ -1625,7 +1625,7 @@ class NiriSettingsApp(Gtk.Window):
             ("Mod + Shift + D", "Toggle Bottom macOS Dock Auto-Hide"),
             ("Mod + Shift + Slash", "Niri Keybindings Hotkey Cheat Sheet"),
             ("Mod + L", "Lock Screen (Swaylock Blurred Image)"),
-            ("Mod + Shift + E", "Open Power / Logout Menu (Wlogout)"),
+            ("Mod + Escape", "Open Power / Logout Menu (Wlogout)"),
             ("Mod + Q", "Close Focused Window"),
             ("Mod + Left / Right", "Navigate Columns Left / Right"),
             ("Mod + Up / Down", "Navigate Windows in Column Up / Down"),

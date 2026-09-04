@@ -265,13 +265,10 @@ binds {
 
    
 
-// --- Power Menu (Fuzzel) ---
-Mod+Escape { 
-    spawn "sh" "-c" "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock ;; Suspend) swaylock && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
-}
+    // --- Power Menu (Wlogout) ---
+    Mod+Escape { spawn "wlogout" "-b" "3"; }
     Mod+Shift+T { spawn "bash" "/home/sreyas/.config/niri/theme-switcher.sh"; }
     Mod+Shift+N { spawn "swaync-client" "-t" "-sw"; }
-    Mod+Shift+E { spawn "wlogout" "-b" "3"; }
 
 
     // --- Wallpaper ---

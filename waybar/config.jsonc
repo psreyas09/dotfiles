@@ -157,7 +157,8 @@
 
     "custom/power": {
         "format": "⏻ ",
-        "on-click": "echo -e 'Lock\nSuspend\nLogout\nReboot\nShutdown' | fuzzel --dmenu -p 'Power: ' | xargs -I{} sh -c 'case {} in Lock) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 ;; Suspend) swaylock -f --screenshots --clock --indicator --effect-blur 7x5 && systemctl suspend ;; Logout) niri msg action quit ;; Reboot) reboot ;; Shutdown) poweroff ;; esac'"
+        "on-click": "wlogout -b 3",
+        "tooltip": "Power Menu (Super+Escape)"
     },
 
     "group/media": {
