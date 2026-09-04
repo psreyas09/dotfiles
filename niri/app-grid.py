@@ -48,23 +48,30 @@ def get_app_image(app_info, size=72):
             if hasattr(gicon, "get_names"):
                 for n in gicon.get_names():
                     if theme.has_icon(n):
-                        img = Gtk.Image.new_from_icon_name(n, Gtk.IconSize.DIALOG)
-                        img.set_pixel_size(size)
-                        return img
+                        pb = theme.load_icon(n, size, Gtk.IconLookupFlags.FORCE_SIZE)
+                        return Gtk.Image.new_from_pixbuf(pb)
             elif hasattr(gicon, "to_string"):
                 s = gicon.to_string()
                 if theme.has_icon(s):
-                    img = Gtk.Image.new_from_icon_name(s, Gtk.IconSize.DIALOG)
-                    img.set_pixel_size(size)
-                    return img
+                    pb = theme.load_icon(s, size, Gtk.IconLookupFlags.FORCE_SIZE)
+                    return Gtk.Image.new_from_pixbuf(pb)
                 elif os.path.exists(s):
                     pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(s, size, size, True)
                     return Gtk.Image.new_from_pixbuf(pb)
+            else:
+                info = theme.lookup_by_gicon(gicon, size, Gtk.IconLookupFlags.FORCE_SIZE)
+                if info:
+                    pb = info.load_icon()
+                    return Gtk.Image.new_from_pixbuf(pb)
         except Exception:
             pass
-    img = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
-    img.set_pixel_size(size)
-    return img
+    try:
+        pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
+        return Gtk.Image.new_from_pixbuf(pb)
+    except Exception:
+        img = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
+        img.set_pixel_size(size)
+        return img
 
 
 class AppTile(Gtk.Button):
@@ -78,9 +85,11 @@ class AppTile(Gtk.Button):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         box.set_valign(Gtk.Align.CENTER)
         box.set_halign(Gtk.Align.CENTER)
+        box.set_can_focus(False)
 
-        # 72px Crisp Vector Icon
+        # 72px Pre-rendered Crisp Vector Icon
         img = get_app_image(app_info, 72)
+        img.set_can_focus(False)
         box.pack_start(img, False, False, 0)
 
         # App Label
@@ -91,6 +100,7 @@ class AppTile(Gtk.Button):
         label.set_line_wrap(True)
         label.set_max_width_chars(15)
         label.set_ellipsize(3) # PANGO_ELLIPSIZE_END
+        label.set_can_focus(False)
         box.pack_start(label, False, False, 0)
 
         self.add(box)
@@ -156,7 +166,45 @@ class AppGridOverlay(Gtk.Window):
                 if tile.is_visible():
                     tile.grab_focus()
                     return True
+        elif event.keyval in (Gdk.KEY_Page_Down, Gdk.KEY_KP_Page_Down):
+            self.scroll_by(self.vadj.get_page_size() * 0.8)
+            return True
+        elif event.keyval in (Gdk.KEY_Page_Up, Gdk.KEY_KP_Page_Up):
+            self.scroll_by(-self.vadj.get_page_size() * 0.8)
+            return True
+        elif event.keyval in (Gdk.KEY_Home, Gdk.KEY_KP_Home):
+            self.scroll_to(0.0)
+            return True
+        elif event.keyval in (Gdk.KEY_End, Gdk.KEY_KP_End):
+            max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
+            self.scroll_to(max_y)
+            return True
         return False
+
+    def scroll_by(self, amount):
+        max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
+        self.velocity = 0.0
+        self.target_y = max(0.0, min(max_y, self.target_y + amount))
+        if not self.is_animating:
+            self.is_animating = True
+            self.last_frame_time = time.perf_counter()
+            self.add_tick_callback(self.on_physics_tick)
+
+    def scroll_to(self, pos):
+        max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
+        self.velocity = 0.0
+        self.target_y = max(0.0, min(max_y, pos))
+        if not self.is_animating:
+            self.is_animating = True
+            self.last_frame_time = time.perf_counter()
+            self.add_tick_callback(self.on_physics_tick)
+
+    def on_vadj_changed(self, adj):
+        if not self.is_animating:
+            val = adj.get_value()
+            self.current_y = val
+            self.target_y = val
+            self.velocity = 0.0
 
     def setup_ui(self):
         main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
@@ -221,11 +269,17 @@ class AppGridOverlay(Gtk.Window):
         self.scroll.set_kinetic_scrolling(False)
         main_vbox.pack_start(self.scroll, True, True, 0)
 
-        # Smooth 120Hz Scrolling State
+        # Smooth 120Hz Scrolling Physics State
         self.vadj = self.scroll.get_vadjustment()
-        self.wheel_target = 0.0
-        self.wheel_timer_id = None
+        self.current_y = 0.0
+        self.target_y = 0.0
+        self.velocity = 0.0
+        self.last_scroll_time = 0.0
+        self.last_frame_time = 0.0
+        self.is_animating = False
+
         self.scroll.connect("scroll-event", self.on_smooth_scroll)
+        self.vadj.connect("value-changed", self.on_vadj_changed)
 
         # FlowBox for Multi-column Application Grid (6 columns centered)
         self.flowbox = Gtk.FlowBox()
@@ -250,51 +304,120 @@ class AppGridOverlay(Gtk.Window):
         self.load_applications()
 
     def on_smooth_scroll(self, widget, event):
-        has_deltas, dx, dy = event.get_scroll_deltas()
         max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
-
-        if has_deltas:
-            # Native Touchpad 120Hz subpixel scroll (0ms latency, perfectly 1:1)
-            if self.wheel_timer_id:
-                GLib.source_remove(self.wheel_timer_id)
-                self.wheel_timer_id = None
-            curr = self.vadj.get_value()
-            new_val = max(0.0, min(max_y, curr + dy * 38.0))
-            self.vadj.set_value(new_val)
-            self.wheel_target = new_val
-            return True
-        else:
-            # Discrete mouse wheel: 120.8 FPS physics via 8ms timer
-            if not self.wheel_timer_id:
-                self.wheel_target = self.vadj.get_value()
-            if event.direction == Gdk.ScrollDirection.UP:
-                self.wheel_target -= 130.0
-            elif event.direction == Gdk.ScrollDirection.DOWN:
-                self.wheel_target += 130.0
-            self.wheel_target = max(0.0, min(max_y, self.wheel_target))
-
-            if not self.wheel_timer_id:
-                self.wheel_timer_id = GLib.timeout_add(8, self.on_wheel_tick)
-            return True
-
-    def on_wheel_tick(self):
-        curr = self.vadj.get_value()
-        diff = self.wheel_target - curr
-        if abs(diff) < 0.6:
-            self.vadj.set_value(self.wheel_target)
-            self.wheel_timer_id = None
+        if max_y <= 0.0:
             return False
-        # 120 FPS lerp interpolation
-        self.vadj.set_value(curr + diff * 0.28)
+
+        dev = event.get_source_device()
+        source = dev.get_source() if dev else None
+
+        is_stop = False
+        if hasattr(event, "is_stop"):
+            try:
+                is_stop = event.is_stop()
+            except Exception:
+                pass
+
+        has_deltas, dx, dy = event.get_scroll_deltas()
+
+        # Discriminate between Touchpad vs Mouse Wheel
+        is_touchpad = (source == Gdk.InputSource.TOUCHPAD) or is_stop
+        if not is_touchpad and source != Gdk.InputSource.MOUSE:
+            if has_deltas and abs(dy) > 0 and abs(dy) != 1.0 and abs(dy) != 2.0 and abs(dy) != 3.0:
+                is_touchpad = True
+
+        if is_stop:
+            self.last_scroll_time = 0.0
+            if abs(self.velocity) > 60.0:
+                if not self.is_animating:
+                    self.is_animating = True
+                    self.last_frame_time = time.perf_counter()
+                    self.add_tick_callback(self.on_physics_tick)
+            else:
+                self.velocity = 0.0
+            return True
+
+        if is_touchpad:
+            now = time.perf_counter()
+            dt = now - self.last_scroll_time if self.last_scroll_time > 0 else 0.016
+            if dt > 0.15:
+                self.velocity = 0.0
+            self.last_scroll_time = now
+
+            delta_px = dy * 22.0
+            if 0.001 < dt < 0.15:
+                inst_v = delta_px / dt
+                self.velocity = self.velocity * 0.4 + inst_v * 0.6
+
+            self.current_y = max(0.0, min(max_y, self.current_y + delta_px))
+            self.target_y = self.current_y
+            self.vadj.set_value(self.current_y)
+            return True
+
+        # Mouse wheel: accumulate targets & animate smoothly at 120Hz
+        self.velocity = 0.0
+        step = 150.0  # Approx 1 row of application cards
+        if has_deltas:
+            self.target_y += dy * step
+        elif event.direction == Gdk.ScrollDirection.UP:
+            self.target_y -= step
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            self.target_y += step
+
+        self.target_y = max(0.0, min(max_y, self.target_y))
+        if not self.is_animating:
+            self.is_animating = True
+            self.last_frame_time = time.perf_counter()
+            self.add_tick_callback(self.on_physics_tick)
+        return True
+
+    def on_physics_tick(self, widget, frame_clock):
+        max_y = max(0.0, self.vadj.get_upper() - self.vadj.get_page_size())
+        now = time.perf_counter()
+        dt = min(0.03, max(0.001, now - self.last_frame_time))
+        self.last_frame_time = now
+
+        # 1. Kinetic glide (touchpad flick inertia)
+        if abs(self.velocity) > 15.0:
+            self.current_y += self.velocity * dt
+            self.velocity *= 0.93  # Exponential friction decay
+
+            if self.current_y <= 0.0:
+                self.current_y = 0.0
+                self.velocity = 0.0
+            elif self.current_y >= max_y:
+                self.current_y = max_y
+                self.velocity = 0.0
+
+            self.target_y = self.current_y
+            self.vadj.set_value(self.current_y)
+
+            if abs(self.velocity) < 15.0:
+                self.velocity = 0.0
+                self.is_animating = False
+                return False
+            return True
+
+        # 2. Smooth Lerp to target_y (mouse wheel / keyboard)
+        diff = self.target_y - self.current_y
+        if abs(diff) < 0.6:
+            self.current_y = self.target_y
+            self.vadj.set_value(self.current_y)
+            self.is_animating = False
+            return False
+
+        # 120Hz critically damped interpolation (0.22/frame reaches target in ~80-100ms)
+        self.current_y += diff * 0.22
+        self.vadj.set_value(self.current_y)
         return True
 
     def on_category_clicked(self, button, cat_name):
         self.active_category = cat_name
-        if self.wheel_timer_id:
-            GLib.source_remove(self.wheel_timer_id)
-            self.wheel_timer_id = None
-        self.wheel_target = 0.0
+        self.velocity = 0.0
+        self.current_y = 0.0
+        self.target_y = 0.0
         self.vadj.set_value(0.0)
+        self.is_animating = False
         for cat, btn in self.cat_buttons.items():
             ctx = btn.get_style_context()
             if cat == cat_name:
@@ -304,11 +427,11 @@ class AppGridOverlay(Gtk.Window):
         self.filter_apps()
 
     def on_search_changed(self, entry):
-        if self.wheel_timer_id:
-            GLib.source_remove(self.wheel_timer_id)
-            self.wheel_timer_id = None
-        self.wheel_target = 0.0
+        self.velocity = 0.0
+        self.current_y = 0.0
+        self.target_y = 0.0
         self.vadj.set_value(0.0)
+        self.is_animating = False
         self.filter_apps()
 
     def filter_apps(self):
@@ -384,7 +507,10 @@ class AppGridOverlay(Gtk.Window):
         css = f"""
         @import url('{THEME_CSS_PATH}');
 
-        * {{
+        #gnome-app-grid-window,
+        #gnome-app-grid-window label,
+        #gnome-app-grid-window button,
+        #gnome-app-grid-window entry {{
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Cantarell", "Symbols Nerd Font", "JetBrains Mono", sans-serif;
             color: #ffffff;
         }}
@@ -402,14 +528,14 @@ class AppGridOverlay(Gtk.Window):
             font-size: 14.5px;
             font-weight: 500;
             color: #ffffff;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
             transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
         #gnome-search-entry:focus {{
             border-color: rgba(255, 255, 255, 0.50);
             background-color: rgba(255, 255, 255, 0.18);
-            box-shadow: 0 10px 36px rgba(0, 0, 0, 0.60);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.50);
         }}
 
         /* Circular Close Button */
@@ -495,7 +621,7 @@ class AppGridOverlay(Gtk.Window):
             font-size: 12.5px;
             font-weight: 600;
             color: #ffffff;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.90);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.80);
         }}
 
         #empty-search-label {{
