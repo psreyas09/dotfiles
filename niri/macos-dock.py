@@ -1188,11 +1188,10 @@ class MacOSDock(Gtk.Window):
             margin: 8px 6px 10px 6px;
         }}
 
-        /* Context Menu (GNOME / macOS Solid High-Contrast Dark Menu - No Shadows / No Transparency Bleed) */
+        /* Context Menu (GNOME / macOS Solid High-Contrast Dark Menu - Completely Opaque & Crisp Visible Border) */
         window.popup,
         window.popup.background,
-        window.popup decoration,
-        window.popup menu {{
+        window.popup decoration {{
             background: transparent;
             background-color: transparent;
             box-shadow: none;
@@ -1201,51 +1200,65 @@ class MacOSDock(Gtk.Window):
             padding: 0;
         }}
 
+        window.popup menu,
         menu.dock-menu {{
-            background-color: #1a1a20;
-            border: 1px solid rgba(255, 255, 255, 0.16);
+            background-color: #1e1e24;
+            border: 1.5px solid rgba(255, 255, 255, 0.32);
             border-radius: 12px;
             padding: 6px;
             margin: 0;
             box-shadow: none;
         }}
 
+        window.popup menu menuitem,
         menu.dock-menu menuitem {{
+            background-color: transparent;
             border-radius: 7px;
-            padding: 6px 12px;
+            padding: 7px 12px;
             color: #FFFFFF;
             font-size: 13px;
             font-weight: 500;
             margin: 1px 0;
         }}
 
+        window.popup menu menuitem:hover,
         menu.dock-menu menuitem:hover {{
             background-color: alpha(@accent-purple, 0.45);
             color: #FFFFFF;
         }}
 
+        window.popup menu menuitem.menu-header,
         menu.dock-menu menuitem.menu-header,
-        menu.dock-menu menuitem.menu-header:disabled,
+        window.popup menu menuitem.menu-header:disabled,
+        menu.dock-menu menuitem.menu-header:disabled {{
+            background-color: transparent;
+            padding: 5px 12px 3px 12px;
+        }}
+
+        window.popup menu menuitem.menu-header label,
         menu.dock-menu menuitem.menu-header label,
+        window.popup menu menuitem.menu-header:disabled label,
         menu.dock-menu menuitem.menu-header:disabled label {{
             color: rgba(255, 255, 255, 0.70);
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.5px;
-            padding: 5px 12px 3px 12px;
         }}
 
+        window.popup menu menuitem.menu-header:hover,
         menu.dock-menu menuitem.menu-header:hover {{
             background-color: transparent;
         }}
 
+        window.popup menu menuitem.menu-danger:hover,
         menu.dock-menu menuitem.menu-danger:hover {{
             background-color: rgba(235, 77, 75, 0.45);
             color: #FFFFFF;
         }}
 
+        window.popup menu separator,
         menu.dock-menu separator {{
-            background-color: rgba(255, 255, 255, 0.14);
+            background-color: rgba(255, 255, 255, 0.18);
             min-height: 1px;
             margin: 4px 6px;
         }}
