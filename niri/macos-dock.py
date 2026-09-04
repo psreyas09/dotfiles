@@ -1042,15 +1042,15 @@ class MacOSDock(Gtk.Window):
     def on_item_enter_notify(self, btn, event, item, is_dynamic):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
-        self.handle_mouse_motion(event)
+        self.handle_mouse_motion(event, widget=btn)
         return False
 
     def on_item_motion_notify(self, btn, event, item, is_dynamic):
         if not self.drag_data:
-            self.handle_mouse_motion(event)
+            self.handle_mouse_motion(event, widget=btn)
             return False
         if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
-            self.handle_mouse_motion(event)
+            self.handle_mouse_motion(event, widget=btn)
             return False
 
         dx = abs(event.x_root - self.drag_data["start_x"])
@@ -1062,12 +1062,12 @@ class MacOSDock(Gtk.Window):
                 self.clear_hover_wave()
                 btn.get_style_context().add_class("dragging")
             else:
-                self.handle_mouse_motion(event)
+                self.handle_mouse_motion(event, widget=btn)
                 return False
 
         # Live reordering during drag
         if not is_dynamic:
-            coords = self.translate_coordinates(self.pinned_box, event.x, event.y)
+            coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
             if coords:
                 box_x = coords[0]
                 children = self.pinned_box.get_children()
@@ -1097,7 +1097,7 @@ class MacOSDock(Gtk.Window):
                 GLib.timeout_add(150, lambda: setattr(self, "_just_finished_drag", False))
 
                 if is_dynamic:
-                    coords = self.translate_coordinates(self.pinned_box, event.x, event.y)
+                    coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
                     if coords:
                         box_x = coords[0]
                         p_alloc = self.pinned_box.get_allocation()
@@ -1264,7 +1264,7 @@ class MacOSDock(Gtk.Window):
             self.last_wave_time = None
             self.add_tick_callback(self.on_wave_tick)
 
-    def handle_mouse_motion(self, event):
+    def handle_mouse_motion(self, event, widget=None):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
@@ -1275,7 +1275,10 @@ class MacOSDock(Gtk.Window):
             GLib.source_remove(self.leave_timer_id)
             self.leave_timer_id = None
 
-        coords = self.translate_coordinates(self.card, event.x, event.y)
+        if widget is None:
+            widget = self
+
+        coords = widget.translate_coordinates(self.card, event.x, event.y)
         if not coords:
             return
 
@@ -1435,7 +1438,7 @@ class MacOSDock(Gtk.Window):
         return True
 
     def on_card_motion_notify(self, widget, event):
-        self.handle_mouse_motion(event)
+        self.handle_mouse_motion(event, widget=widget)
         return False
 
     def on_card_leave_notify(self, widget, event):
@@ -1884,7 +1887,7 @@ class MacOSDock(Gtk.Window):
         return False
 
     def on_motion_notify(self, widget, event):
-        self.handle_mouse_motion(event)
+        self.handle_mouse_motion(event, widget=widget)
         return False
 
     def on_leave_notify(self, widget, event):
