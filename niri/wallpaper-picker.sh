@@ -7,8 +7,22 @@ CACHE_DIR="$HOME/.cache"
 STATE_FILE="$CACHE_DIR/current_wallpaper"
 BLURRED_WALL="$CACHE_DIR/current_wallpaper_blurred.png"
 DEFAULT_WALL="$STATIC_DIR/0anime4.jpg"
+TRANSITION_FILE="$CACHE_DIR/wallpaper_transition"
 
 mkdir -p "$CACHE_DIR"
+
+# Ensure default transition type is wipe
+if [ ! -f "$TRANSITION_FILE" ]; then
+    echo "wipe" > "$TRANSITION_FILE"
+fi
+
+# Helper function to ensure swww daemon is running
+ensure_swww() {
+    if ! pgrep -x swww-daemon >/dev/null; then
+        setsid swww-daemon >/dev/null 2>&1 &
+        sleep 0.3
+    fi
+}
 
 # Helper function to generate wallust palette & hot-reload apps
 apply_wallust_palette() {
@@ -23,7 +37,7 @@ apply_wallust_palette() {
     fi
 }
 
-# Helper function to apply wallpaper + blurred overview backdrop
+# Helper function to apply wallpaper with smooth animated transitions + overview backdrop
 apply_wallpaper() {
     local img="$1"
     [ ! -f "$img" ] && return 1
@@ -31,21 +45,69 @@ apply_wallpaper() {
     # Save selection for persistence across reboots/logouts
     echo "$img" > "$STATE_FILE"
 
-    pkill mpvpaper
-    pkill swaybg
-    pkill swaybg-backdrop
+    pkill -9 mpvpaper 2>/dev/null
+    pkill -9 swaybg 2>/dev/null
 
-    # 1. Generate high-quality blurred backdrop for Overview
-    magick "$img" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
-    ffmpeg -y -i "$img" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
+    ensure_swww
 
-    # 2. Launch blurred backdrop for Overview
-    nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
+    local trans_type
+    trans_type=$(cat "$TRANSITION_FILE" 2>/dev/null || echo "wipe")
 
-    # 3. Launch normal wallpaper for workspaces
-    nohup swaybg -i "$img" -m fill > /dev/null 2>&1 &
+    case "$trans_type" in
+        grow|center)
+            swww img "$img" \
+                --transition-type grow \
+                --transition-pos center \
+                --transition-duration 1.5 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
+            ;;
+        outer)
+            swww img "$img" \
+                --transition-type outer \
+                --transition-pos center \
+                --transition-duration 1.5 \
+                --transition-fps 60 2>/dev/null
+            ;;
+        fade)
+            swww img "$img" \
+                --transition-type fade \
+                --transition-duration 1.5 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
+            ;;
+        wave)
+            swww img "$img" \
+                --transition-type wave \
+                --transition-angle 30 \
+                --transition-duration 1.5 \
+                --transition-fps 60 2>/dev/null
+            ;;
+        random)
+            swww img "$img" \
+                --transition-type random \
+                --transition-duration 1.5 \
+                --transition-fps 60 2>/dev/null
+            ;;
+        wipe|*)
+            swww img "$img" \
+                --transition-type wipe \
+                --transition-angle 30 \
+                --transition-duration 1.5 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
+            ;;
+    esac
 
-    # 4. Generate dynamic color palette
+    # 2. Update blurred backdrop for Overview in background
+    (
+        pkill -9 swaybg-backdrop 2>/dev/null
+        magick "$img" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
+        ffmpeg -y -i "$img" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
+        nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
+    ) &
+
+    # 3. Generate dynamic color palette
     apply_wallust_palette "$img"
 }
 
@@ -57,9 +119,10 @@ apply_live_wallpaper() {
     # Save selection for persistence across reboots/logouts
     echo "$video" > "$STATE_FILE"
 
-    pkill mpvpaper
-    pkill swaybg
-    pkill swaybg-backdrop
+    pkill -9 swww-daemon 2>/dev/null
+    pkill -9 swaybg 2>/dev/null
+    pkill -9 mpvpaper 2>/dev/null
+    pkill -9 swaybg-backdrop 2>/dev/null
 
     # Generate blurred first frame for Overview backdrop
     ffmpeg -y -i "$video" -vframes 1 -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
@@ -93,9 +156,12 @@ restore_wallpaper() {
             apply_live_wallpaper "$wall"
             ;;
         *)
-            pkill mpvpaper
-            pkill swaybg
-            pkill swaybg-backdrop
+            pkill -9 mpvpaper 2>/dev/null
+            pkill -9 swaybg 2>/dev/null
+            pkill -9 swaybg-backdrop 2>/dev/null
+
+            ensure_swww
+            swww img "$wall" --transition-type none 2>/dev/null || swww img "$wall" 2>/dev/null
 
             # If blurred cache does not exist, generate it
             if [ ! -f "$BLURRED_WALL" ]; then
@@ -104,15 +170,28 @@ restore_wallpaper() {
             fi
 
             nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
-
-            nohup swaybg -i "$wall" -m fill > /dev/null 2>&1 &
             ;;
     esac
+}
+
+# Helper to choose transition effect
+choose_transition_effect() {
+    local choice
+    choice=$(echo -e "wipe (Diagonal Sweep)\ngrow (Circle Expand from Center)\nfade (Smooth Dissolve)\nwave (Fluid Wave Ripple)\nouter (Circle Shrink)\nrandom (Random Effect each time)" | fuzzel --dmenu -p "Transition Effect: ")
+    if [ -n "$choice" ]; then
+        local effect
+        effect=$(echo "$choice" | awk '{print $1}')
+        echo "$effect" > "$TRANSITION_FILE"
+        notify-send "Wallpaper Transition" "Set effect to '$effect'!" -u low -i preferences-desktop-wallpaper 2>/dev/null
+    fi
 }
 
 # --- Argument Routing ---
 if [ "$1" == "--restore" ] || [ "$1" == "-r" ] || [ "$1" == "--init" ]; then
     restore_wallpaper
+    exit 0
+elif [ "$1" == "--transition" ] || [ "$1" == "-t" ]; then
+    choose_transition_effect
     exit 0
 elif [ -n "$1" ] && [ -f "$1" ]; then
     file_path="$1"
@@ -129,8 +208,8 @@ elif [ -n "$1" ] && [ -f "$1" ]; then
     exit 0
 fi
 
-# 1. Ask user for wallpaper type
-TYPE=$(echo -e "Static (fuzzel)\nStatic (sxiv)\nLive (fuzzel)" | fuzzel --dmenu -p "Wallpaper Type: ")
+# 1. Ask user for wallpaper action
+TYPE=$(echo -e "Static (fuzzel)\nStatic (sxiv)\nLive (fuzzel)\nTransition Effect (fuzzel)" | fuzzel --dmenu -p "Wallpaper Action: ")
 
 if [ "$TYPE" == "Static (fuzzel)" ]; then
     # STATIC WALLPAPER VIA FUZZEL LOGIC
@@ -148,7 +227,7 @@ elif [ "$TYPE" == "Live (fuzzel)" ]; then
     fi
 
 elif [ "$TYPE" == "Static (sxiv)" ]; then
-    # STATIC WALLPAPER LOGIC
+    # STATIC WALLPAPER VIA SXIV
     SELECTED=$(sxiv -t -o "$STATIC_DIR" | head -n 1)
     if [ -n "$SELECTED" ]; then
         if [[ "$SELECTED" != /* ]]; then
@@ -158,4 +237,7 @@ elif [ "$TYPE" == "Static (sxiv)" ]; then
         fi
         apply_wallpaper "$FULL_PATH"
     fi
+
+elif [ "$TYPE" == "Transition Effect (fuzzel)" ]; then
+    choose_transition_effect
 fi
