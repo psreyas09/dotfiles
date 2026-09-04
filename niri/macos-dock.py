@@ -2090,22 +2090,18 @@ class MacOSDock(Gtk.Window):
         dt = min(0.05, now - self.last_anim_time)
         self.last_anim_time = now
 
-        HIDDEN_MARGIN = -115.0
+        HIDDEN_MARGIN = -110.0
         target = 0.0 if self.should_be_visible() else HIDDEN_MARGIN
         diff = target - self.current_margin
 
         if abs(diff) > 0.5:
-            speed = 14.0
+            speed = 16.0
             self.current_margin += diff * min(1.0, dt * speed)
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, int(self.current_margin))
-
-            progress = max(0.0, min(1.0, (self.current_margin - HIDDEN_MARGIN) / (0.0 - HIDDEN_MARGIN)))
-            Gtk.Widget.set_opacity(self.card, progress)
             return True
         else:
             self.current_margin = target
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, int(self.current_margin))
-            Gtk.Widget.set_opacity(self.card, 1.0 if target >= 0 else 0.0)
             self.is_animating = False
             return False  # Animation complete: unhook callback for 0.0% CPU!
 
