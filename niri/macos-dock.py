@@ -848,14 +848,8 @@ class MacOSDock(Gtk.Window):
         # macOS Frosted Glass Capsule
         self.card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.set_name("dock-card")
-        self.card.add_events(
-            Gdk.EventMask.BUTTON_PRESS_MASK
-            | Gdk.EventMask.POINTER_MOTION_MASK
-            | Gdk.EventMask.LEAVE_NOTIFY_MASK
-        )
+        self.card.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.card.connect("button-press-event", self.on_card_button_press)
-        self.card.connect("motion-notify-event", self.on_card_motion_notify)
-        self.card.connect("leave-notify-event", self.on_card_leave_notify)
         self.dock_container.pack_start(self.card, False, False, 0)
 
         # 1. Pinned Apps
@@ -1043,15 +1037,15 @@ class MacOSDock(Gtk.Window):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
         self.handle_mouse_motion(event, widget=btn)
-        return False
+        return True
 
     def on_item_motion_notify(self, btn, event, item, is_dynamic):
         if not self.drag_data:
             self.handle_mouse_motion(event, widget=btn)
-            return False
+            return True
         if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
             self.handle_mouse_motion(event, widget=btn)
-            return False
+            return True
 
         dx = abs(event.x_root - self.drag_data["start_x"])
         dy = abs(event.y_root - self.drag_data["start_y"])
@@ -1063,7 +1057,7 @@ class MacOSDock(Gtk.Window):
                 btn.get_style_context().add_class("dragging")
             else:
                 self.handle_mouse_motion(event, widget=btn)
-                return False
+                return True
 
         # Live reordering during drag
         if not is_dynamic:
@@ -1085,7 +1079,7 @@ class MacOSDock(Gtk.Window):
                         pw_entry = self.pinned_widgets.pop(current_idx)
                         self.pinned_widgets.insert(target_idx, pw_entry)
                         self.pinned_box.queue_draw()
-        return False
+        return True
 
     def on_item_button_release(self, btn, event, item, is_dynamic):
         if event.button == 1 and self.drag_data:
