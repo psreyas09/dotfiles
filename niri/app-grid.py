@@ -41,37 +41,14 @@ def cleanup():
 
 
 def get_app_image(app_info, size=72):
-    theme = Gtk.IconTheme.get_default()
     gicon = app_info.get_icon()
     if gicon:
-        try:
-            if hasattr(gicon, "get_names"):
-                for n in gicon.get_names():
-                    if theme.has_icon(n):
-                        pb = theme.load_icon(n, size, Gtk.IconLookupFlags.FORCE_SIZE)
-                        return Gtk.Image.new_from_pixbuf(pb)
-            elif hasattr(gicon, "to_string"):
-                s = gicon.to_string()
-                if theme.has_icon(s):
-                    pb = theme.load_icon(s, size, Gtk.IconLookupFlags.FORCE_SIZE)
-                    return Gtk.Image.new_from_pixbuf(pb)
-                elif os.path.exists(s):
-                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(s, size, size, True)
-                    return Gtk.Image.new_from_pixbuf(pb)
-            else:
-                info = theme.lookup_by_gicon(gicon, size, Gtk.IconLookupFlags.FORCE_SIZE)
-                if info:
-                    pb = info.load_icon()
-                    return Gtk.Image.new_from_pixbuf(pb)
-        except Exception:
-            pass
-    try:
-        pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
-        return Gtk.Image.new_from_pixbuf(pb)
-    except Exception:
-        img = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
+        img = Gtk.Image.new_from_gicon(gicon, Gtk.IconSize.DIALOG)
         img.set_pixel_size(size)
         return img
+    img = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
+    img.set_pixel_size(size)
+    return img
 
 
 class AppTile(Gtk.Button):

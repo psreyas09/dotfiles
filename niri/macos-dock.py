@@ -129,18 +129,22 @@ def get_app_icon_pixbuf(app_id, title="", size=44):
                 pass
     return None
 
+_DESKTOP_INFO_CACHE = {}
+
 def find_desktop_info(item):
-    app_ids = item.get("app_ids", [])
-    names = [item.get("name", "")]
+    app_ids = tuple(item.get("app_ids", []))
+    name = item.get("name", "")
+    cache_key = (app_ids, name)
+    if cache_key in _DESKTOP_INFO_CACHE:
+        return _DESKTOP_INFO_CACHE[cache_key]
+
     candidates = []
     for aid in app_ids:
         if not aid:
             continue
         candidates.extend([aid, aid + ".desktop", aid.lower(), aid.lower() + ".desktop"])
         candidates.append(aid.split(".")[-1] + ".desktop")
-    for name in names:
-        if not name:
-            continue
+    if name:
         n = name.lower().replace(" ", "-")
         candidates.append(n + ".desktop")
 
@@ -154,6 +158,7 @@ def find_desktop_info(item):
         try:
             info = Gio.DesktopAppInfo.new(c)
             if info:
+                _DESKTOP_INFO_CACHE[cache_key] = info
                 return info
         except (TypeError, Exception):
             pass
@@ -179,11 +184,13 @@ def find_desktop_info(item):
                             try:
                                 info = Gio.DesktopAppInfo.new_from_filename(os.path.join(root, f))
                                 if info:
+                                    _DESKTOP_INFO_CACHE[cache_key] = info
                                     return info
                             except Exception:
                                 pass
         except Exception:
             pass
+    _DESKTOP_INFO_CACHE[cache_key] = None
     return None
 
 DEFAULT_PINNED_APPS = [
@@ -226,7 +233,13 @@ DEFAULT_PINNED_APPS = [
 ]
 
 
+_ALL_DESKTOP_APPS = None
+
 def get_all_desktop_apps():
+    global _ALL_DESKTOP_APPS
+    if _ALL_DESKTOP_APPS is not None:
+        return _ALL_DESKTOP_APPS
+
     apps = Gio.AppInfo.get_all()
     res = []
     seen = set()
@@ -260,12 +273,14 @@ def get_all_desktop_apps():
             "name": name,
             "desc": desc,
             "icon": icons,
+            "gicon": app.get_icon(),
             "cmd": cmd,
             "app_ids": [d_id] if d_id else []
         }
         res.append(item)
 
     res.sort(key=lambda x: x["name"].lower())
+    _ALL_DESKTOP_APPS = res
     return res
 
 
@@ -506,34 +521,23 @@ class DockAppChooserDialog(Gtk.Window):
             hbox.set_margin_start(8)
             hbox.set_margin_end(8)
 
-            # Icon
+            # Icon (instant resolution via gicon / icon name)
             img = Gtk.Image()
             size = 36
-            pb = None
-            for cand in item.get("icon", []):
-                if not cand:
-                    continue
-                if os.path.exists(cand):
-                    try:
-                        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(cand, size, size, True)
-                        break
-                    except Exception:
-                        pass
-                if theme.has_icon(cand):
-                    try:
-                        pb = theme.load_icon(cand, size, Gtk.IconLookupFlags.FORCE_SIZE)
-                        break
-                    except Exception:
-                        pass
-            if not pb:
+            img.set_pixel_size(size)
+            gicon = item.get("gicon")
+            icon_cands = item.get("icon", [])
+            icon_name = icon_cands[0] if icon_cands else "application-x-executable"
+            if gicon:
+                img.set_from_gicon(gicon, Gtk.IconSize.LARGE_TOOLBAR)
+            elif icon_name.startswith("/"):
                 try:
-                    pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_name, size, size, True)
+                    img.set_from_pixbuf(pb)
                 except Exception:
-                    pass
-            if pb:
-                img.set_from_pixbuf(pb)
+                    img.set_from_icon_name("application-x-executable", Gtk.IconSize.LARGE_TOOLBAR)
             else:
-                img.set_from_icon_name("application-x-executable", Gtk.IconSize.LARGE_TOOLBAR)
+                img.set_from_icon_name(icon_name, Gtk.IconSize.LARGE_TOOLBAR)
 
             hbox.pack_start(img, False, False, 0)
 
@@ -861,19 +865,7 @@ class MacOSDock(Gtk.Window):
         self.dynamic_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.pack_start(self.dynamic_box, False, False, 0)
 
-        # 3. Add App Button (+) to easily pin applications
-        self.add_btn = Gtk.Button()
-        self.add_btn.set_name("dock-add-btn")
-        self.add_btn.set_relief(Gtk.ReliefStyle.NONE)
-        self.add_btn.set_can_focus(False)
-        self.add_btn.set_focus_on_click(False)
-        self.add_btn.set_tooltip_text("Pin Applications to Dock...")
-        add_icon = Gtk.Image.new_from_icon_name("list-add-symbolic", Gtk.IconSize.MENU)
-        self.add_btn.add(add_icon)
-        self.add_btn.connect("clicked", lambda *_: self.open_pin_app_dialog())
-        self.card.pack_start(self.add_btn, False, False, 0)
-
-        # 4. Glass Separator line before Trash
+        # 3. Glass Separator line before Trash
         self.separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         self.separator.set_name("dock-separator")
         self.card.pack_start(self.separator, False, False, 4)
@@ -1031,24 +1023,26 @@ class MacOSDock(Gtk.Window):
     def on_item_enter_notify(self, btn, event, item, is_dynamic):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
-        coords = btn.translate_coordinates(self.card, event.x, event.y)
+        da = getattr(btn, "_da", None)
+        if da and getattr(da, "wave_lift", 0.0) < 1.0:
+            da.wave_vel = 55.0  # snappy initial jump pop!
+        coords = self.translate_coordinates(self.card, event.x, event.y)
         if coords:
-            da = getattr(btn, "_da", None)
-            if da and getattr(da, "wave_lift", 0.0) < 1.0:
-                da.wave_vel = 55.0  # snappy initial jump pop!
-            self.update_hover_wave(coords[0], coords[1])
+            self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
+        else:
+            self.update_hover_wave(0, 0, touched_btn=btn)
         return False
 
     def on_item_motion_notify(self, btn, event, item, is_dynamic):
         if not self.drag_data:
-            coords = btn.translate_coordinates(self.card, event.x, event.y)
+            coords = self.translate_coordinates(self.card, event.x, event.y)
             if coords:
-                self.update_hover_wave(coords[0], coords[1])
+                self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
             return False
         if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
-            coords = btn.translate_coordinates(self.card, event.x, event.y)
+            coords = self.translate_coordinates(self.card, event.x, event.y)
             if coords:
-                self.update_hover_wave(coords[0], coords[1])
+                self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
             return False
 
         dx = abs(event.x_root - self.drag_data["start_x"])
@@ -1060,14 +1054,14 @@ class MacOSDock(Gtk.Window):
                 self.clear_hover_wave()
                 btn.get_style_context().add_class("dragging")
             else:
-                coords = btn.translate_coordinates(self.card, event.x, event.y)
+                coords = self.translate_coordinates(self.card, event.x, event.y)
                 if coords:
-                    self.update_hover_wave(coords[0], coords[1])
+                    self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
                 return False
 
         # Live reordering during drag
         if not is_dynamic:
-            coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
+            coords = self.translate_coordinates(self.pinned_box, event.x, event.y)
             if coords:
                 box_x = coords[0]
                 children = self.pinned_box.get_children()
@@ -1097,7 +1091,7 @@ class MacOSDock(Gtk.Window):
                 GLib.timeout_add(150, lambda: setattr(self, "_just_finished_drag", False))
 
                 if is_dynamic:
-                    coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
+                    coords = self.translate_coordinates(self.pinned_box, event.x, event.y)
                     if coords:
                         box_x = coords[0]
                         p_alloc = self.pinned_box.get_allocation()
@@ -1264,7 +1258,7 @@ class MacOSDock(Gtk.Window):
             self.last_wave_time = None
             self.add_tick_callback(self.on_wave_tick)
 
-    def update_hover_wave(self, mouse_card_x, mouse_card_y):
+    def update_hover_wave(self, mouse_card_x, mouse_card_y, touched_btn=None):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
@@ -1273,6 +1267,15 @@ class MacOSDock(Gtk.Window):
 
         buttons = self.get_all_icon_buttons()
         any_active = False
+
+        # If touched_btn is explicitly known, ensure mouse_card_x aligns with it
+        if touched_btn and hasattr(touched_btn, "_da"):
+            t_coords = touched_btn.translate_coordinates(self.card, 0, 0)
+            if t_coords:
+                t_w = touched_btn.get_allocation().width if touched_btn.get_allocation().width > 0 else 48.0
+                t_center = t_coords[0] + t_w / 2.0
+                if not (t_coords[0] <= mouse_card_x <= t_coords[0] + t_w):
+                    mouse_card_x = t_center
 
         for btn in buttons:
             da = getattr(btn, "_da", None)
@@ -1286,7 +1289,9 @@ class MacOSDock(Gtk.Window):
             center_x = coords[0] + btn_w / 2.0
             dist = abs(mouse_card_x - center_x)
 
-            if dist < WAVE_RADIUS:
+            if btn == touched_btn:
+                target = MAX_HOVER_LIFT
+            elif dist < WAVE_RADIUS:
                 target = MAX_HOVER_LIFT * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
             else:
                 target = 0.0
@@ -1376,7 +1381,7 @@ class MacOSDock(Gtk.Window):
     def on_card_motion_notify(self, widget, event):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
-        coords = widget.translate_coordinates(self.card, event.x, event.y)
+        coords = self.translate_coordinates(self.card, event.x, event.y)
         if coords:
             self.update_hover_wave(coords[0], coords[1])
         return False
