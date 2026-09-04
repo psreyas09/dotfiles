@@ -144,6 +144,8 @@ window-rule {
     match app-id="niri-settings"
     match app-id="org.gnome.Settings"
     match app-id="gnome-control-center"
+    match app-id="dock-pin-manager"
+    match title="Pin Applications to Dock"
     open-floating true
     opacity 0.95
 }

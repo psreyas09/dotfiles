@@ -1,0 +1,77 @@
+[
+  {
+    "name": "Zen Browser",
+    "icon": [
+      "app.zen_browser.zen",
+      "zen-browser",
+      "zen"
+    ],
+    "cmd": "flatpak run app.zen_browser.zen",
+    "app_ids": [
+      "app.zen_browser.zen",
+      "zen"
+    ]
+  },
+  {
+    "name": "Nautilus",
+    "icon": [
+      "org.gnome.Nautilus",
+      "system-file-manager"
+    ],
+    "cmd": "nautilus",
+    "app_ids": [
+      "org.gnome.nautilus",
+      "nautilus"
+    ]
+  },
+  {
+    "name": "Rambox",
+    "icon": [
+      "rambox",
+      "com.rambox.Rambox"
+    ],
+    "cmd": "rambox",
+    "app_ids": [
+      "rambox"
+    ]
+  },
+  {
+    "name": "Visual Studio Code",
+    "icon": [
+      "vscode",
+      "/usr/share/pixmaps/vscode.png",
+      "com.visualstudio.code",
+      "code"
+    ],
+    "cmd": "code",
+    "app_ids": [
+      "code",
+      "com.visualstudio.code"
+    ]
+  },
+  {
+    "name": "Lutris",
+    "icon": [
+      "net.lutris.Lutris",
+      "lutris"
+    ],
+    "cmd": "lutris",
+    "app_ids": [
+      "net.lutris.lutris",
+      "lutris"
+    ]
+  },
+  {
+    "name": "Settings",
+    "icon": [
+      "preferences-system",
+      "org.gnome.Settings",
+      "preferences-desktop"
+    ],
+    "cmd": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py",
+    "app_ids": [
+      "niri-settings",
+      "niri-settings.py"
+    ]
+  }
+]

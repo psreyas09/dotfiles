@@ -8,6 +8,7 @@ import threading
 import subprocess
 import re
 import math
+import shutil
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -225,6 +226,378 @@ DEFAULT_PINNED_APPS = [
 ]
 
 
+def get_all_desktop_apps():
+    apps = Gio.AppInfo.get_all()
+    res = []
+    seen = set()
+    for app in apps:
+        if not app.should_show():
+            continue
+        name = app.get_name()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+
+        cmd_raw = app.get_commandline() or ""
+        cmd = re.sub(r'@@.*?@@|%[a-zA-Z]', '', cmd_raw).strip()
+
+        icon_str = ""
+        if app.has_key("Icon"):
+            icon_str = app.get_string("Icon") or ""
+        elif app.get_icon():
+            icon_str = app.get_icon().to_string()
+
+        d_id = (app.get_id() or "").replace(".desktop", "")
+        desc = app.get_description() or ""
+
+        icons = []
+        if icon_str:
+            icons.append(icon_str)
+        if d_id and d_id not in icons:
+            icons.append(d_id)
+
+        item = {
+            "name": name,
+            "desc": desc,
+            "icon": icons,
+            "cmd": cmd,
+            "app_ids": [d_id] if d_id else []
+        }
+        res.append(item)
+
+    res.sort(key=lambda x: x["name"].lower())
+    return res
+
+
+class StandaloneDockManager:
+    def __init__(self):
+        self.pinned_apps = self.load_pinned_apps()
+
+    def load_pinned_apps(self):
+        for path in [PINNED_CONFIG_FILE, DOTFILE_PINNED_FILE]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            return data
+                except Exception:
+                    pass
+        return list(DEFAULT_PINNED_APPS)
+
+    def save_pinned_apps(self):
+        for path in [PINNED_CONFIG_FILE, DOTFILE_PINNED_FILE]:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    json.dump(self.pinned_apps, f, indent=2)
+            except Exception:
+                pass
+
+    def is_app_pinned(self, app_id, name):
+        name_lower = (name or "").lower()
+        aid_lower = (app_id or "").lower()
+        for p in self.pinned_apps:
+            p_name = (p.get("name") or "").lower()
+            p_aids = [a.lower() for a in p.get("app_ids", []) if a]
+            if p_name == name_lower:
+                return True
+            if aid_lower and (aid_lower in p_aids or any(aid_lower in a or a in aid_lower for a in p_aids)):
+                return True
+        return False
+
+    def pin_app(self, item):
+        dinfo = find_desktop_info(item)
+        name = (dinfo.get_name() if dinfo else None) or item.get("name") or "App"
+        cmd = item.get("cmd") or ""
+
+        if dinfo:
+            if not cmd:
+                cmd_raw = dinfo.get_commandline() or ""
+                cmd = re.sub(r'@@.*?@@|%[a-zA-Z]', '', cmd_raw).strip()
+            d_id = (dinfo.get_id() or "").replace(".desktop", "")
+            icon_str = dinfo.get_string("Icon") if dinfo.has_key("Icon") else ""
+        else:
+            d_id = ""
+            icon_str = ""
+
+        if not cmd:
+            app_ids = item.get("app_ids", [])
+            for aid in app_ids:
+                if shutil.which(aid):
+                    cmd = aid
+                    break
+                elif "." in aid:
+                    cmd = f"flatpak run {aid}"
+                    break
+            if not cmd:
+                cand = item.get("name", "").lower()
+                if shutil.which(cand):
+                    cmd = cand
+
+        icons = []
+        if icon_str:
+            icons.append(icon_str)
+        for ic in item.get("icon", []):
+            if ic and ic not in icons:
+                icons.append(ic)
+        if d_id and d_id not in icons:
+            icons.append(d_id)
+
+        app_ids = list(item.get("app_ids", []))
+        if d_id and d_id not in app_ids:
+            app_ids.append(d_id)
+
+        entry = {
+            "name": name,
+            "icon": icons,
+            "cmd": cmd,
+            "app_ids": app_ids
+        }
+
+        name_lower = name.lower()
+        aid_lowers = [a.lower() for a in app_ids if a]
+
+        exists_idx = None
+        for idx, p in enumerate(self.pinned_apps):
+            p_name = (p.get("name") or "").lower()
+            p_aids = [a.lower() for a in p.get("app_ids", []) if a]
+            if p_name == name_lower or (aid_lowers and any(a in p_aids for a in aid_lowers)):
+                exists_idx = idx
+                break
+
+        if exists_idx is None:
+            self.pinned_apps.append(entry)
+        else:
+            self.pinned_apps[exists_idx] = entry
+
+        self.save_pinned_apps()
+
+    def unpin_app(self, item):
+        name_lower = (item.get("name") or "").lower()
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+
+        self.pinned_apps = [
+            p for p in self.pinned_apps
+            if not (
+                (p.get("name") or "").lower() == name_lower
+                or any(aid in [a.lower() for a in p.get("app_ids", [])] for aid in app_ids if aid)
+            )
+        ]
+        self.save_pinned_apps()
+
+
+class DockAppChooserDialog(Gtk.Window):
+    def __init__(self, dock):
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+        self.dock = dock
+        self.set_title("Pin Applications to Dock")
+        self.set_role("dock-pin-manager")
+        self.set_default_size(480, 560)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_resizable(True)
+        self.get_style_context().add_class("dock-app-dialog")
+
+        # Main Layout
+        main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        main_vbox.set_name("dock-app-dialog-content")
+        self.add(main_vbox)
+
+        # Header Box
+        header_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        header_box.set_name("dock-app-dialog-header")
+        header_box.set_margin_top(16)
+        header_box.set_margin_bottom(12)
+        header_box.set_margin_start(20)
+        header_box.set_margin_end(20)
+
+        title_lbl = Gtk.Label()
+        title_lbl.set_markup("<span weight='bold' size='large' foreground='#FFFFFF'>Pin Applications to Dock</span>")
+        title_lbl.set_xalign(0.0)
+        header_box.pack_start(title_lbl, False, False, 0)
+
+        sub_lbl = Gtk.Label()
+        sub_lbl.set_markup("<span size='small' foreground='#9D9DB0'>Select applications to keep permanently on your bottom dock</span>")
+        sub_lbl.set_xalign(0.0)
+        header_box.pack_start(sub_lbl, False, False, 0)
+
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_name("dock-app-dialog-search")
+        self.search_entry.set_placeholder_text("Search installed applications...")
+        self.search_entry.set_margin_top(10)
+        self.search_entry.connect("search-changed", self.on_search_changed)
+        header_box.pack_start(self.search_entry, False, False, 0)
+
+        main_vbox.pack_start(header_box, False, False, 0)
+
+        # Scrolled List
+        self.scroll = Gtk.ScrolledWindow()
+        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scroll.set_shadow_type(Gtk.ShadowType.NONE)
+        self.scroll.set_margin_start(16)
+        self.scroll.set_margin_end(16)
+
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.listbox.set_filter_func(self.filter_apps)
+        self.scroll.add(self.listbox)
+        main_vbox.pack_start(self.scroll, True, True, 0)
+
+        # Bottom Bar
+        bottom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        bottom_box.set_margin_top(12)
+        bottom_box.set_margin_bottom(14)
+        bottom_box.set_margin_start(20)
+        bottom_box.set_margin_end(20)
+
+        self.count_lbl = Gtk.Label()
+        self.count_lbl.set_xalign(0.0)
+        bottom_box.pack_start(self.count_lbl, True, True, 0)
+
+        done_btn = Gtk.Button(label="Done")
+        done_btn.set_name("dock-app-dialog-done")
+        done_btn.connect("clicked", lambda *_: self.destroy())
+        bottom_box.pack_end(done_btn, False, False, 0)
+
+        main_vbox.pack_start(bottom_box, False, False, 0)
+
+        self.connect("key-press-event", self.on_key_press)
+
+        # Populate
+        self.populate_apps()
+        self.update_count_label()
+
+    def on_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.destroy()
+            return True
+        return False
+
+    def on_search_changed(self, entry):
+        self.listbox.invalidate_filter()
+
+    def filter_apps(self, row):
+        query = self.search_entry.get_text().strip().lower()
+        if not query:
+            return True
+        item = getattr(row, "_item", {})
+        name = (item.get("name") or "").lower()
+        desc = (item.get("desc") or "").lower()
+        cmd = (item.get("cmd") or "").lower()
+        return query in name or query in desc or query in cmd
+
+    def update_count_label(self):
+        count = len(getattr(self.dock, "pinned_apps", []))
+        self.count_lbl.set_markup(f"<span size='small' foreground='#B5B5BE'><b>{count}</b> apps pinned to dock</span>")
+
+    def populate_apps(self):
+        apps = get_all_desktop_apps()
+        theme = Gtk.IconTheme.get_default()
+
+        for item in apps:
+            row = Gtk.ListBoxRow()
+            row._item = item
+            row.set_activatable(False)
+
+            hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            hbox.set_name("dock-app-row")
+            hbox.set_margin_top(4)
+            hbox.set_margin_bottom(4)
+            hbox.set_margin_start(8)
+            hbox.set_margin_end(8)
+
+            # Icon
+            img = Gtk.Image()
+            size = 36
+            pb = None
+            for cand in item.get("icon", []):
+                if not cand:
+                    continue
+                if os.path.exists(cand):
+                    try:
+                        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(cand, size, size, True)
+                        break
+                    except Exception:
+                        pass
+                if theme.has_icon(cand):
+                    try:
+                        pb = theme.load_icon(cand, size, Gtk.IconLookupFlags.FORCE_SIZE)
+                        break
+                    except Exception:
+                        pass
+            if not pb:
+                try:
+                    pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
+                except Exception:
+                    pass
+            if pb:
+                img.set_from_pixbuf(pb)
+            else:
+                img.set_from_icon_name("application-x-executable", Gtk.IconSize.LARGE_TOOLBAR)
+
+            hbox.pack_start(img, False, False, 0)
+
+            # Text
+            vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            vbox.set_valign(Gtk.Align.CENTER)
+
+            name_lbl = Gtk.Label()
+            name_lbl.set_markup(f"<span weight='bold' foreground='#FFFFFF'>{GLib.markup_escape_text(item['name'])}</span>")
+            name_lbl.set_xalign(0.0)
+            vbox.pack_start(name_lbl, False, False, 0)
+
+            desc_text = item.get("desc") or item.get("cmd") or ""
+            if len(desc_text) > 46:
+                desc_text = desc_text[:44] + "…"
+            desc_lbl = Gtk.Label()
+            desc_lbl.set_markup(f"<span size='small' foreground='#888896'>{GLib.markup_escape_text(desc_text)}</span>")
+            desc_lbl.set_xalign(0.0)
+            vbox.pack_start(desc_lbl, False, False, 0)
+
+            hbox.pack_start(vbox, True, True, 0)
+
+            # Toggle Pin Button
+            btn = Gtk.Button()
+            btn.set_valign(Gtk.Align.CENTER)
+            btn.set_name("dock-app-pin-btn")
+
+            app_id = item.get("app_ids", [""])[0] if item.get("app_ids") else ""
+            is_pinned = self.dock.is_app_pinned(app_id, item["name"])
+            self.style_pin_btn(btn, is_pinned)
+
+            btn.connect("clicked", self.on_toggle_pin, item)
+            hbox.pack_end(btn, False, False, 0)
+
+            row.add(hbox)
+            row._btn = btn
+            self.listbox.add(row)
+
+    def style_pin_btn(self, btn, is_pinned):
+        ctx = btn.get_style_context()
+        if is_pinned:
+            btn.set_label("✓ Pinned")
+            ctx.remove_class("unpinned")
+            ctx.add_class("pinned")
+        else:
+            btn.set_label("+ Pin")
+            ctx.remove_class("pinned")
+            ctx.add_class("unpinned")
+
+    def on_toggle_pin(self, btn, item):
+        app_id = item.get("app_ids", [""])[0] if item.get("app_ids") else ""
+        name = item["name"]
+        is_pinned = self.dock.is_app_pinned(app_id, name)
+
+        if is_pinned:
+            self.dock.unpin_app(item)
+            self.style_pin_btn(btn, False)
+        else:
+            self.dock.pin_app(item)
+            self.style_pin_btn(btn, True)
+
+        self.update_count_label()
+
+
 class MacOSDock(Gtk.Window):
     def __init__(self):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
@@ -292,58 +665,144 @@ class MacOSDock(Gtk.Window):
         # Start low-overhead Niri stream listener
         self.start_niri_listener()
 
+        # Monitor dock-pinned.json for external changes
+        self.setup_pinned_monitor()
+
     # --- Pinned Apps Persistence ---
     def load_pinned_apps(self):
-        if os.path.exists(PINNED_CONFIG_FILE):
-            try:
-                with open(PINNED_CONFIG_FILE, "r") as f:
-                    data = json.load(f)
-                    if isinstance(data, list) and len(data) > 0:
-                        return data
-            except Exception:
-                pass
-        return list(DEFAULT_PINNED_APPS)
+        for path in [PINNED_CONFIG_FILE, DOTFILE_PINNED_FILE]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            return data
+                except Exception:
+                    pass
+        defaults = list(DEFAULT_PINNED_APPS)
+        self.save_pinned_apps_list(defaults)
+        return defaults
 
     def save_pinned_apps(self):
+        self._last_internal_save = time.time()
+        self.save_pinned_apps_list(self.pinned_apps)
+
+    def save_pinned_apps_list(self, apps):
+        for path in [PINNED_CONFIG_FILE, DOTFILE_PINNED_FILE]:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    json.dump(apps, f, indent=2)
+            except Exception:
+                pass
+
+    def setup_pinned_monitor(self):
         try:
-            os.makedirs(os.path.dirname(PINNED_CONFIG_FILE), exist_ok=True)
-            with open(PINNED_CONFIG_FILE, "w") as f:
-                json.dump(self.pinned_apps, f, indent=2)
-            if os.path.exists(os.path.dirname(DOTFILE_PINNED_FILE)):
-                with open(DOTFILE_PINNED_FILE, "w") as f:
-                    json.dump(self.pinned_apps, f, indent=2)
+            gfile = Gio.File.new_for_path(PINNED_CONFIG_FILE)
+            self.pinned_monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
+            self.pinned_monitor.connect("changed", self.on_pinned_file_changed)
         except Exception:
             pass
 
+    def on_pinned_file_changed(self, monitor, file, other_file, event_type):
+        if event_type in (Gio.FileMonitorEvent.CHANGES_DONE_HINT, Gio.FileMonitorEvent.CREATED):
+            if time.time() - getattr(self, "_last_internal_save", 0) > 0.3:
+                GLib.idle_add(self.reload_pinned_apps)
+
+    def reload_pinned_apps(self):
+        self.pinned_apps = self.load_pinned_apps()
+        self.rebuild_pinned_dock()
+
+    def is_app_pinned(self, app_id, name):
+        name_lower = (name or "").lower()
+        aid_lower = (app_id or "").lower()
+        for p in self.pinned_apps:
+            p_name = (p.get("name") or "").lower()
+            p_aids = [a.lower() for a in p.get("app_ids", []) if a]
+            if p_name == name_lower:
+                return True
+            if aid_lower and (aid_lower in p_aids or any(aid_lower in a or a in aid_lower for a in p_aids)):
+                return True
+        return False
+
     def pin_app(self, item):
+        dinfo = find_desktop_info(item)
+        name = (dinfo.get_name() if dinfo else None) or item.get("name") or "App"
         cmd = item.get("cmd") or ""
+
+        if dinfo:
+            if not cmd:
+                cmd_raw = dinfo.get_commandline() or ""
+                cmd = re.sub(r'@@.*?@@|%[a-zA-Z]', '', cmd_raw).strip()
+            d_id = (dinfo.get_id() or "").replace(".desktop", "")
+            icon_str = dinfo.get_string("Icon") if dinfo.has_key("Icon") else ""
+        else:
+            d_id = ""
+            icon_str = ""
+
         if not cmd:
-            dinfo = find_desktop_info(item)
-            if dinfo:
-                cmd_line = dinfo.get_commandline() or ""
-                cmd = re.sub(r'%[a-zA-Z]', '', cmd_line).strip()
+            app_ids = item.get("app_ids", [])
+            for aid in app_ids:
+                if shutil.which(aid):
+                    cmd = aid
+                    break
+                elif "." in aid:
+                    cmd = f"flatpak run {aid}"
+                    break
+            if not cmd:
+                cand = item.get("name", "").lower()
+                if shutil.which(cand):
+                    cmd = cand
+
+        icons = []
+        if icon_str:
+            icons.append(icon_str)
+        for ic in item.get("icon", []):
+            if ic and ic not in icons:
+                icons.append(ic)
+        if d_id and d_id not in icons:
+            icons.append(d_id)
+
+        app_ids = list(item.get("app_ids", []))
+        if d_id and d_id not in app_ids:
+            app_ids.append(d_id)
 
         entry = {
-            "name": item.get("name", "App"),
-            "icon": item.get("icon", []),
+            "name": name,
+            "icon": icons,
             "cmd": cmd,
-            "app_ids": item.get("app_ids", [])
+            "app_ids": app_ids
         }
 
-        # Avoid duplicates
-        name_lower = entry["name"].lower()
-        if not any(p.get("name", "").lower() == name_lower for p in self.pinned_apps):
+        name_lower = name.lower()
+        aid_lowers = [a.lower() for a in app_ids if a]
+
+        exists_idx = None
+        for idx, p in enumerate(self.pinned_apps):
+            p_name = (p.get("name") or "").lower()
+            p_aids = [a.lower() for a in p.get("app_ids", []) if a]
+            if p_name == name_lower or (aid_lowers and any(a in p_aids for a in aid_lowers)):
+                exists_idx = idx
+                break
+
+        if exists_idx is None:
             self.pinned_apps.append(entry)
-            self.save_pinned_apps()
-            self.rebuild_pinned_dock()
+        else:
+            self.pinned_apps[exists_idx] = entry
+
+        self.save_pinned_apps()
+        self.rebuild_pinned_dock()
 
     def unpin_app(self, item):
-        name_lower = item.get("name", "").lower()
+        name_lower = (item.get("name") or "").lower()
         app_ids = [a.lower() for a in item.get("app_ids", []) if a]
 
         self.pinned_apps = [
             p for p in self.pinned_apps
-            if p.get("name", "").lower() != name_lower and not any(aid in [a.lower() for a in p.get("app_ids", [])] for aid in app_ids)
+            if not (
+                (p.get("name") or "").lower() == name_lower
+                or any(aid in [a.lower() for a in p.get("app_ids", [])] for aid in app_ids if aid)
+            )
         ]
         self.save_pinned_apps()
         self.rebuild_pinned_dock()
@@ -358,6 +817,14 @@ class MacOSDock(Gtk.Window):
             self.pinned_widgets.append((item, w))
         self.pinned_box.show_all()
         self.update_dock_data(self.has_windows_on_workspace, self.running_windows)
+
+    def open_pin_app_dialog(self):
+        if getattr(self, "pin_dialog", None) and self.pin_dialog.get_visible():
+            self.pin_dialog.present()
+            return
+        self.pin_dialog = DockAppChooserDialog(self)
+        self.pin_dialog.show_all()
+        self.pin_dialog.present()
 
     def setup_ui(self):
         self.dock_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -379,7 +846,19 @@ class MacOSDock(Gtk.Window):
         self.dynamic_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.card.pack_start(self.dynamic_box, False, False, 0)
 
-        # 3. Glass Separator line before Trash
+        # 3. Add App Button (+) to easily pin applications
+        self.add_btn = Gtk.Button()
+        self.add_btn.set_name("dock-add-btn")
+        self.add_btn.set_relief(Gtk.ReliefStyle.NONE)
+        self.add_btn.set_can_focus(False)
+        self.add_btn.set_focus_on_click(False)
+        self.add_btn.set_tooltip_text("Pin Applications to Dock...")
+        add_icon = Gtk.Image.new_from_icon_name("list-add-symbolic", Gtk.IconSize.MENU)
+        self.add_btn.add(add_icon)
+        self.add_btn.connect("clicked", lambda *_: self.open_pin_app_dialog())
+        self.card.pack_start(self.add_btn, False, False, 0)
+
+        # 4. Glass Separator line before Trash
         self.separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         self.separator.set_name("dock-separator")
         self.card.pack_start(self.separator, False, False, 4)
@@ -937,6 +1416,11 @@ class MacOSDock(Gtk.Window):
                     "view-pin-symbolic",
                     lambda _: self.unpin_app(item)
                 ))
+            menu.append(self.create_menu_item(
+                "Pin More Apps...",
+                "list-add-symbolic",
+                lambda _: self.open_pin_app_dialog()
+            ))
 
             # 5. Quit Option (GNOME Quit)
             if is_running:
@@ -975,6 +1459,17 @@ class MacOSDock(Gtk.Window):
             top.set_app_paintable(True)
 
             menu.append(self.create_menu_item("macOS Dock", is_header=True))
+            menu.append(Gtk.SeparatorMenuItem())
+            menu.append(self.create_menu_item(
+                "Pin Application to Dock...",
+                "list-add-symbolic",
+                lambda _: self.open_pin_app_dialog()
+            ))
+            menu.append(self.create_menu_item(
+                "Open App Launcher (Fuzzel)",
+                "view-app-grid-symbolic",
+                lambda _: subprocess.Popen(["fuzzel"])
+            ))
             menu.append(Gtk.SeparatorMenuItem())
             menu.append(self.create_menu_item(
                 "Niri Settings",
@@ -1437,6 +1932,103 @@ class MacOSDock(Gtk.Window):
             min-height: 1px;
             margin: 4px 6px;
         }}
+
+        /* Add App to Dock Button */
+        #dock-add-btn {{
+            background: transparent;
+            border: none;
+            border-radius: 12px;
+            padding: 8px 10px;
+            margin: 4px 2px;
+            color: rgba(255, 255, 255, 0.65);
+            min-width: 38px;
+            outline: none;
+            box-shadow: none;
+        }}
+
+        #dock-add-btn:hover {{
+            background-color: rgba(255, 255, 255, 0.18);
+            color: #FFFFFF;
+        }}
+
+        /* App Chooser Dialog Styling */
+        window.dock-app-dialog,
+        #dock-app-dialog-content {{
+            background-color: #1e1e24;
+            color: #FFFFFF;
+            border-radius: 16px;
+        }}
+
+        #dock-app-dialog-header {{
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            padding-bottom: 12px;
+        }}
+
+        #dock-app-dialog-search {{
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 10px;
+            color: #FFFFFF;
+            padding: 6px 12px;
+        }}
+
+        #dock-app-dialog-search:focus {{
+            border-color: @accent-purple;
+            box-shadow: 0 0 0 1px @accent-purple;
+        }}
+
+        #dock-app-row {{
+            border-radius: 8px;
+            padding: 6px 10px;
+        }}
+
+        #dock-app-row:hover {{
+            background-color: rgba(255, 255, 255, 0.08);
+        }}
+
+        #dock-app-pin-btn {{
+            border-radius: 14px;
+            padding: 4px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            outline: none;
+            box-shadow: none;
+        }}
+
+        #dock-app-pin-btn.pinned {{
+            background-color: @accent-purple;
+            color: #FFFFFF;
+            border: 1px solid transparent;
+        }}
+
+        #dock-app-pin-btn.pinned:hover {{
+            background-color: shade(@accent-purple, 1.2);
+        }}
+
+        #dock-app-pin-btn.unpinned {{
+            background-color: rgba(255, 255, 255, 0.08);
+            color: #E2E2EC;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+        }}
+
+        #dock-app-pin-btn.unpinned:hover {{
+            background-color: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.40);
+        }}
+
+        #dock-app-dialog-done {{
+            background-color: @accent-purple;
+            color: #FFFFFF;
+            border-radius: 8px;
+            padding: 6px 20px;
+            font-weight: 600;
+            border: none;
+            outline: none;
+        }}
+
+        #dock-app-dialog-done:hover {{
+            background-color: shade(@accent-purple, 1.2);
+        }}
         """
         css_provider.load_from_data(css.encode('utf-8'))
         Gtk.StyleContext.add_provider_for_screen(
@@ -1447,6 +2039,16 @@ class MacOSDock(Gtk.Window):
 
 
 def main():
+    if "--pin-dialog" in sys.argv or "--manage-pins" in sys.argv:
+        # Run standalone App Chooser Dialog
+        MacOSDock.apply_css(None)
+        manager = StandaloneDockManager()
+        dlg = DockAppChooserDialog(manager)
+        dlg.connect("destroy", Gtk.main_quit)
+        dlg.show_all()
+        Gtk.main()
+        return
+
     enforce_single_instance()
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)

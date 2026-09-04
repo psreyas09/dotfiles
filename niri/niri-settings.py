@@ -818,6 +818,16 @@ class NiriSettingsApp(Gtk.Window):
             restart_btn
         ))
 
+        # Manage Pinned Apps
+        manage_pin_btn = Gtk.Button(label="Manage Pinned Apps...")
+        manage_pin_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/python3 /home/sreyas/.config/niri/macos-dock.py --pin-dialog"))
+        dock_card.add_row(create_setting_row(
+            "view-pin-symbolic",
+            "Pinned Applications",
+            "Add, remove, and manage applications permanently pinned to the bottom dock",
+            manage_pin_btn
+        ))
+
         dock_card.add_row(create_setting_row(
             "go-bottom",
             "Intelligent Auto-Hide",
