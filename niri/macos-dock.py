@@ -7,6 +7,7 @@ import signal
 import threading
 import subprocess
 import re
+import math
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -253,6 +254,10 @@ class MacOSDock(Gtk.Window):
         self.running_windows = []
         self.leave_timer_id = None
 
+        # Icon jumping / bouncing animation state
+        self.bouncing_apps = {}
+        self.is_bouncing_animating = False
+
         # Load pinned apps configuration
         self.pinned_apps = self.load_pinned_apps()
 
@@ -442,9 +447,20 @@ class MacOSDock(Gtk.Window):
         if not pb:
             pb = get_app_icon_pixbuf(item.get("app_ids", [""])[0] if item.get("app_ids") else "", size=size)
 
-        img = Gtk.Image.new_from_pixbuf(pb) if pb else Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
-        img.set_name("dock-icon")
-        vbox.pack_start(img, False, False, 0)
+        if not pb:
+            try:
+                pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
+            except Exception:
+                pass
+
+        # High-performance Cairo DrawingArea for 120Hz smooth jumping animation
+        da = Gtk.DrawingArea()
+        da.set_size_request(48, 56)
+        da.set_name("dock-icon-area")
+        da.jump_y = 0.0
+        da._pb = pb
+        da.connect("draw", self.on_icon_draw)
+        vbox.pack_start(da, False, False, 0)
 
         # macOS Running Indicator Dot
         dot = Gtk.Label(label="•")
@@ -458,9 +474,27 @@ class MacOSDock(Gtk.Window):
         btn.connect("clicked", self.on_item_clicked, item, win_id)
 
         btn._dot = dot
+        btn._da = da
         btn._item = item
         btn._is_dynamic = is_dynamic
         return btn
+
+    def on_icon_draw(self, widget, cr):
+        pb = getattr(widget, "_pb", None)
+        if not pb:
+            return False
+        alloc = widget.get_allocation()
+        w = alloc.width if alloc.width > 0 else 48
+        pb_w = pb.get_width()
+        x = max(0, (w - pb_w) // 2)
+
+        # Idle position is at y = 12, leaving 12px headroom at the top for the jump
+        jump = getattr(widget, "jump_y", 0.0)
+        y = 12.0 - jump
+
+        Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
+        cr.paint()
+        return False
 
     def on_item_button_press(self, btn, event, item, is_dynamic, win_id):
         if event.button == 3:  # Right Click -> Context Menu
@@ -472,6 +506,11 @@ class MacOSDock(Gtk.Window):
         return False
 
     def on_item_clicked(self, btn, item, win_id=None):
+        name = item.get("name", "")
+        if name in self.bouncing_apps:
+            # Already launching and bouncing! Don't spawn multiple instances on rapid clicks
+            return
+
         matching_windows = self.get_windows_for_item(item)
 
         if matching_windows:
@@ -484,39 +523,108 @@ class MacOSDock(Gtk.Window):
                 target_win = matching_windows[0]
                 subprocess.Popen(["niri", "msg", "action", "focus-window", "--id", str(target_win["id"])])
         else:
+            # Launch app with bouncing animation until window opens!
+            self.start_bouncing(item, btn)
             cmd = item.get("cmd")
             if cmd:
                 subprocess.Popen(cmd, shell=True)
 
+    # --- Jumping / Bouncing Physics Engine ---
+    def get_button_for_item(self, item):
+        name = item.get("name")
+        for itm, btn in self.pinned_widgets:
+            if itm.get("name") == name:
+                return btn
+        for btn in self.dynamic_widgets:
+            if getattr(btn, "_item", {}).get("name") == name:
+                return btn
+        return None
+
+    def start_bouncing(self, item, btn=None):
+        if not btn:
+            btn = self.get_button_for_item(item)
+        if not btn:
+            return
+        name = item.get("name", "")
+        if name in self.bouncing_apps:
+            return
+        da = getattr(btn, "_da", None)
+        if not da:
+            return
+
+        prev_ids = {w["id"] for w in self.running_windows if self.matches_item(item, w)}
+
+        self.bouncing_apps[name] = {
+            "item": item,
+            "btn": btn,
+            "da": da,
+            "start_time": time.time(),
+            "prev_ids": prev_ids
+        }
+
+        if not self.is_bouncing_animating:
+            self.is_bouncing_animating = True
+            self.add_tick_callback(self.on_bounce_tick)
+
+    def stop_bouncing(self, name):
+        data = self.bouncing_apps.pop(name, None)
+        if data:
+            da = data.get("da")
+            if da:
+                da.jump_y = 0.0
+                da.queue_draw()
+
+    def on_bounce_tick(self, widget, frame_clock):
+        now = time.time()
+        MAX_JUMP = 12.0
+        CYCLE = 0.52
+        JUMP_DUR = 0.38
+        TIMEOUT = 14.0
+
+        to_remove = []
+        for name, data in list(self.bouncing_apps.items()):
+            elapsed = now - data["start_time"]
+            if elapsed > TIMEOUT:
+                to_remove.append(name)
+                continue
+
+            c = elapsed % CYCLE
+            if c < JUMP_DUR:
+                progress = c / JUMP_DUR
+                jump = MAX_JUMP * math.sin(progress * math.pi)
+            else:
+                jump = 0.0
+
+            da = data["da"]
+            da.jump_y = jump
+            da.queue_draw()
+
+        for name in to_remove:
+            self.stop_bouncing(name)
+
+        if not self.bouncing_apps:
+            self.is_bouncing_animating = False
+            return False
+        return True
+
     # --- Windows & Action Discovery ---
-    def get_windows_for_item(self, item):
-        matches = []
+    def matches_item(self, item, w):
+        win_id = item.get("win_id")
+        if win_id is not None and w.get("id") == win_id:
+            return True
         app_ids = [a.lower() for a in item.get("app_ids", []) if a]
         name = (item.get("name") or "").lower()
-        win_id = item.get("win_id")
+        aid = (w.get("app_id") or "").lower()
+        for a in app_ids:
+            if a in aid or aid in a:
+                return True
+        if not app_ids and aid:
+            if aid in name or name in aid:
+                return True
+        return False
 
-        for w in self.running_windows:
-            if win_id is not None and w.get("id") == win_id:
-                if w not in matches:
-                    matches.append(w)
-                continue
-
-            aid = (w.get("app_id") or "").lower()
-            matched = False
-            for a in app_ids:
-                if a in aid or aid in a:
-                    if w not in matches:
-                        matches.append(w)
-                    matched = True
-                    break
-            if matched:
-                continue
-
-            if not app_ids and aid:
-                if aid in name or name in aid:
-                    if w not in matches:
-                        matches.append(w)
-        return matches
+    def get_windows_for_item(self, item):
+        return [w for w in self.running_windows if self.matches_item(item, w)]
 
     def supports_new_window(self, item):
         name = (item.get("name") or "").lower()
@@ -535,6 +643,7 @@ class MacOSDock(Gtk.Window):
         return False
 
     def open_new_window(self, item):
+        self.start_bouncing(item)
         name = (item.get("name") or "").lower()
         app_ids = [a.lower() for a in item.get("app_ids", []) if a]
 
@@ -593,7 +702,7 @@ class MacOSDock(Gtk.Window):
             actions.append((
                 "New Private Window",
                 "security-high-symbolic",
-                lambda _: subprocess.Popen(["flatpak", "run", "app.zen_browser.zen", "--private-window"])
+                lambda _: (self.start_bouncing(item), subprocess.Popen(["flatpak", "run", "app.zen_browser.zen", "--private-window"]))
             ))
             return actions
 
@@ -602,7 +711,7 @@ class MacOSDock(Gtk.Window):
             actions.append((
                 "New Private Window",
                 "security-high-symbolic",
-                lambda _: subprocess.Popen(["firefox", "--private-window"])
+                lambda _: (self.start_bouncing(item), subprocess.Popen(["firefox", "--private-window"]))
             ))
             return actions
 
@@ -611,7 +720,7 @@ class MacOSDock(Gtk.Window):
             actions.append((
                 "New Incognito Window",
                 "security-high-symbolic",
-                lambda _: subprocess.Popen(["google-chrome", "--incognito"])
+                lambda _: (self.start_bouncing(item), subprocess.Popen(["google-chrome", "--incognito"]))
             ))
             return actions
 
@@ -629,10 +738,13 @@ class MacOSDock(Gtk.Window):
                 elif "profile" in act_lower:
                     act_icon = "avatar-default-symbolic"
 
-                def make_launcher(act=act, dinfo=dinfo):
-                    return lambda _: dinfo.launch_action(act, None)
+                def make_launcher(act=act, dinfo=dinfo, item=item):
+                    def _launch(_):
+                        self.start_bouncing(item)
+                        dinfo.launch_action(act, None)
+                    return _launch
 
-                actions.append((act_label, act_icon, make_launcher(act, dinfo)))
+                actions.append((act_label, act_icon, make_launcher(act, dinfo, item)))
 
         return actions
 
@@ -983,6 +1095,15 @@ class MacOSDock(Gtk.Window):
         self.has_windows_on_workspace = has_windows
         self.running_windows = windows
         self.request_animation()
+
+        # Stop bouncing for apps that now have their new window open
+        if self.bouncing_apps:
+            for name, data in list(self.bouncing_apps.items()):
+                item = data["item"]
+                prev_ids = data["prev_ids"]
+                new_windows = [w for w in windows if self.matches_item(item, w) and w["id"] not in prev_ids]
+                if new_windows:
+                    self.stop_bouncing(name)
 
         # 1. Update running dots on pinned apps
         running_app_ids = set()
