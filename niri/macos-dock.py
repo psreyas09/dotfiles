@@ -944,7 +944,7 @@ class MacOSDock(Gtk.Window):
 
         # High-performance Cairo DrawingArea for 120Hz smooth magnification & flowing wave
         da = Gtk.DrawingArea()
-        da.set_size_request(48, 72)
+        da.set_size_request(60, 72)
         da.set_name("dock-icon-area")
         da.jump_y = 0.0
         da.current_scale = 1.0
@@ -985,7 +985,7 @@ class MacOSDock(Gtk.Window):
         if not pb:
             return False
         alloc = widget.get_allocation()
-        w = alloc.width if alloc.width > 0 else 48
+        w = alloc.width if alloc.width > 0 else 60
         h = alloc.height if alloc.height > 0 else 72
 
         scale = getattr(widget, "current_scale", 1.0)
@@ -1037,26 +1037,15 @@ class MacOSDock(Gtk.Window):
     def on_item_enter_notify(self, btn, event, item, is_dynamic):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return False
-        da = getattr(btn, "_da", None)
-        if da and getattr(da, "current_scale", 1.0) < 1.05:
-            da.scale_vel = 2.2  # snappy initial jump pop!
-        coords = self.translate_coordinates(self.card, event.x, event.y)
-        if coords:
-            self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
-        else:
-            self.update_hover_wave(0, 0, touched_btn=btn)
+        self.handle_mouse_motion(event)
         return False
 
     def on_item_motion_notify(self, btn, event, item, is_dynamic):
         if not self.drag_data:
-            coords = self.translate_coordinates(self.card, event.x, event.y)
-            if coords:
-                self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
+            self.handle_mouse_motion(event)
             return False
         if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
-            coords = self.translate_coordinates(self.card, event.x, event.y)
-            if coords:
-                self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
+            self.handle_mouse_motion(event)
             return False
 
         dx = abs(event.x_root - self.drag_data["start_x"])
@@ -1068,9 +1057,7 @@ class MacOSDock(Gtk.Window):
                 self.clear_hover_wave()
                 btn.get_style_context().add_class("dragging")
             else:
-                coords = self.translate_coordinates(self.card, event.x, event.y)
-                if coords:
-                    self.update_hover_wave(coords[0], coords[1], touched_btn=btn)
+                self.handle_mouse_motion(event)
                 return False
 
         # Live reordering during drag
@@ -1272,24 +1259,41 @@ class MacOSDock(Gtk.Window):
             self.last_wave_time = None
             self.add_tick_callback(self.on_wave_tick)
 
-    def update_hover_wave(self, mouse_card_x, mouse_card_y, touched_btn=None):
+    def handle_mouse_motion(self, event):
         if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
             return
 
-        WAVE_RADIUS = 140.0
-        MAX_SCALE = 1.38
+        if not self.is_mouse_over:
+            self.is_mouse_over = True
+            self.request_animation()
+        if self.leave_timer_id:
+            GLib.source_remove(self.leave_timer_id)
+            self.leave_timer_id = None
+
+        coords = self.translate_coordinates(self.card, event.x, event.y)
+        if not coords:
+            return
+
+        card_x, card_y = coords
+        alloc = self.card.get_allocation()
+        card_w = alloc.width if alloc.width > 0 else 600
+        card_h = alloc.height if alloc.height > 0 else 80
+
+        # Tracking within card bounds with headroom for lifted icons
+        if -10 <= card_x <= card_w + 10 and -35 <= card_y <= card_h + 10:
+            self.update_hover_wave(card_x, card_y)
+        else:
+            self.clear_hover_wave()
+
+    def update_hover_wave(self, mouse_card_x, mouse_card_y):
+        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
+            return
+
+        WAVE_RADIUS = 150.0
+        MAX_SCALE = 1.35
 
         buttons = self.get_all_icon_buttons()
         any_active = False
-
-        # If touched_btn is explicitly known, ensure mouse_card_x aligns with it
-        if touched_btn and hasattr(touched_btn, "_da"):
-            t_coords = touched_btn.translate_coordinates(self.card, 0, 0)
-            if t_coords:
-                t_w = touched_btn.get_allocation().width if touched_btn.get_allocation().width > 0 else 48.0
-                t_center = t_coords[0] + t_w / 2.0
-                if not (t_coords[0] <= mouse_card_x <= t_coords[0] + t_w):
-                    mouse_card_x = t_center
 
         for btn in buttons:
             da = getattr(btn, "_da", None)
@@ -1299,25 +1303,19 @@ class MacOSDock(Gtk.Window):
             if not coords:
                 continue
             alloc = btn.get_allocation()
-            btn_w = alloc.width if alloc.width > 0 else 48.0
+            btn_w = alloc.width if alloc.width > 0 else 60.0
             center_x = coords[0] + btn_w / 2.0
             dist = abs(mouse_card_x - center_x)
 
-            if btn == touched_btn:
-                target = MAX_SCALE
-            elif dist < WAVE_RADIUS:
+            if dist < WAVE_RADIUS:
                 target = 1.0 + (MAX_SCALE - 1.0) * 0.5 * (1.0 + math.cos(math.pi * dist / WAVE_RADIUS))
             else:
                 target = 1.0
 
-            # Initial snappy impulse when touched from resting state
-            current_target = getattr(da, "target_scale", 1.0)
-            current_scale = getattr(da, "current_scale", 1.0)
-            if target > 1.08 and current_target <= 1.02 and current_scale <= 1.03:
-                da.scale_vel = 2.2
-
             da.target_scale = target
-            if target > 1.0 or current_scale > 1.005 or abs(getattr(da, "scale_vel", 0.0)) > 0.02:
+            current_scale = getattr(da, "current_scale", 1.0)
+            vel = getattr(da, "scale_vel", 0.0)
+            if abs(target - current_scale) > 0.003 or abs(vel) > 0.01:
                 any_active = True
 
         if any_active:
@@ -1330,7 +1328,7 @@ class MacOSDock(Gtk.Window):
             da = getattr(btn, "_da", None)
             if da:
                 da.target_scale = 1.0
-                if getattr(da, "current_scale", 1.0) > 1.005 or abs(getattr(da, "scale_vel", 0.0)) > 0.02:
+                if getattr(da, "current_scale", 1.0) > 1.003 or abs(getattr(da, "scale_vel", 0.0)) > 0.01:
                     any_to_lower = True
         if any_to_lower:
             self.start_wave_animation()
@@ -1343,11 +1341,12 @@ class MacOSDock(Gtk.Window):
             dt = min(0.033, max(0.001, now - self.last_wave_time))
         self.last_wave_time = now
 
-        STIFFNESS = 320.0
-        DAMPING = 26.0
+        # Fluid, snappy critically-damped spring physics
+        STIFFNESS = 280.0
+        DAMPING = 28.0
 
         buttons = self.get_all_icon_buttons()
-        any_active = False
+        any_moving = False
 
         for btn in buttons:
             da = getattr(btn, "_da", None)
@@ -1358,8 +1357,8 @@ class MacOSDock(Gtk.Window):
             target = getattr(da, "target_scale", 1.0)
 
             diff = target - scale
-            if abs(diff) > 0.004 or abs(vel) > 0.02:
-                any_active = True
+            if abs(diff) > 0.003 or abs(vel) > 0.01:
+                any_moving = True
                 force = diff * STIFFNESS - vel * DAMPING
                 vel += force * dt
                 scale += vel * dt
@@ -1368,19 +1367,13 @@ class MacOSDock(Gtk.Window):
                     vel = 0.0
                 da.current_scale = scale
                 da.scale_vel = vel
-
-                # Smoothly adjust width request for organic rippling
-                req_w = int(round(48.0 * (1.0 + (scale - 1.0) * 0.75)))
-                da.set_size_request(req_w, 72)
                 da.queue_draw()
-            elif scale != target:
+            elif scale != target or vel != 0.0:
                 da.current_scale = target
                 da.scale_vel = 0.0
-                req_w = int(round(48.0 * (1.0 + (target - 1.0) * 0.75)))
-                da.set_size_request(req_w, 72)
                 da.queue_draw()
 
-        if not any_active:
+        if not any_moving:
             all_base = all(getattr(btn._da, "target_scale", 1.0) == 1.0 for btn in buttons if hasattr(btn, "_da"))
             if all_base:
                 for btn in buttons:
@@ -1388,24 +1381,15 @@ class MacOSDock(Gtk.Window):
                         btn._da.current_scale = 1.0
                         btn._da.scale_vel = 0.0
                         btn._da.target_scale = 1.0
-                        btn._da.set_size_request(48, 72)
                         btn._da.queue_draw()
-                self.is_wave_animating = False
-                self.last_wave_time = None
-                return False
-            else:
-                self.is_wave_animating = False
-                self.last_wave_time = None
-                return False
+            self.is_wave_animating = False
+            self.last_wave_time = None
+            return False
 
         return True
 
     def on_card_motion_notify(self, widget, event):
-        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
-            return False
-        coords = self.translate_coordinates(self.card, event.x, event.y)
-        if coords:
-            self.update_hover_wave(coords[0], coords[1])
+        self.handle_mouse_motion(event)
         return False
 
     def on_card_leave_notify(self, widget, event):
@@ -1854,24 +1838,7 @@ class MacOSDock(Gtk.Window):
         return False
 
     def on_motion_notify(self, widget, event):
-        if not self.is_mouse_over:
-            self.is_mouse_over = True
-            self.request_animation()
-        if self.leave_timer_id:
-            GLib.source_remove(self.leave_timer_id)
-            self.leave_timer_id = None
-
-        if getattr(self, "drag_data", None) and self.drag_data.get("is_dragging"):
-            return False
-
-        coords = widget.translate_coordinates(self.card, event.x, event.y)
-        if coords:
-            card_x, card_y = coords
-            alloc = self.card.get_allocation()
-            if -15 <= card_x <= alloc.width + 15 and -10 <= card_y <= alloc.height + 10:
-                self.update_hover_wave(card_x, card_y)
-            else:
-                self.clear_hover_wave()
+        self.handle_mouse_motion(event)
         return False
 
     def on_leave_notify(self, widget, event):
@@ -2162,9 +2129,9 @@ class MacOSDock(Gtk.Window):
             -gtk-outline-radius: 0;
             box-shadow: none;
             border-radius: 12px;
-            padding: 4px 6px 2px 6px;
-            margin: 0 2px;
-            min-width: 48px;
+            padding: 4px 4px 2px 4px;
+            margin: 0 1px;
+            min-width: 60px;
             transition: background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
