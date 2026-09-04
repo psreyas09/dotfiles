@@ -258,7 +258,12 @@ binds {
     Mod+R { switch-preset-column-width; }
     Mod+V       { toggle-window-floating; }
     Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    // --- Screenshot & Screen Recording ---
     Print { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print { screenshot-window; }
+    Mod+Print { spawn "bash" "/home/sreyas/.config/niri/screen-recorder.sh"; }
+    Mod+Shift+R { spawn "bash" "/home/sreyas/.config/niri/screen-recorder.sh"; }
 
     // --- Direct Lock & Auto-Lock Toggle ---
     Mod+L { spawn "swaylock"; }

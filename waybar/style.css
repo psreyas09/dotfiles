@@ -44,7 +44,7 @@ calendar label {
 }
 
 /* Dynamic Glass Pill Containers - Adapts to Wallust wallpaper palette */
-#custom-launcher, #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #audio, #group-audio, #battery, #custom-notification, #custom-power {
+#custom-launcher, #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #audio, #group-audio, #battery, #custom-recorder, #custom-notification, #custom-power {
     background-color: alpha(@bg-color, 0.88);
     color: @fg-color;
     margin: 5px 2px;
@@ -268,4 +268,33 @@ calendar label {
 #custom-playpause:hover {
     background-color: alpha(@accent-purple, 0.85);
     border-color: @accent-purple;
+}
+
+/* Screen Recorder Waybar Module */
+#custom-recorder.inactive {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+#custom-recorder.recording {
+    background-color: #f38ba8;
+    color: #11111b;
+    border: 1.5px solid #f38ba8;
+    border-radius: 12px;
+    padding: 0px 10px;
+    margin: 5px 2px;
+    animation: blink-recorder 1.5s infinite alternate;
+}
+
+@keyframes blink-recorder {
+    0% {
+        background-color: #f38ba8;
+        color: #11111b;
+    }
+    100% {
+        background-color: alpha(#f38ba8, 0.4);
+        color: #f38ba8;
+    }
 }

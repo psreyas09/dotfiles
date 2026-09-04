@@ -6,7 +6,16 @@
 
     "modules-left": ["custom/launcher", "niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
-    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "group/audio", "battery", "custom/notification", "custom/power"],
+    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "group/audio", "battery", "custom/recorder", "custom/notification", "custom/power"],
+
+    "custom/recorder": {
+        "format": "{}",
+        "return-type": "json",
+        "exec": "$HOME/.config/niri/screen-recorder.sh --status",
+        "interval": 1,
+        "on-click": "$HOME/.config/niri/screen-recorder.sh --stop",
+        "signal": 8
+    },
 
     "custom/launcher": {
         "format": "",
