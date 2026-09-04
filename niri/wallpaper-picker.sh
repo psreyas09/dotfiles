@@ -7,14 +7,8 @@ CACHE_DIR="$HOME/.cache"
 STATE_FILE="$CACHE_DIR/current_wallpaper"
 BLURRED_WALL="$CACHE_DIR/current_wallpaper_blurred.png"
 DEFAULT_WALL="$STATIC_DIR/0anime4.jpg"
-TRANSITION_FILE="$CACHE_DIR/wallpaper_transition"
 
 mkdir -p "$CACHE_DIR"
-
-# Ensure default transition type is wipe
-if [ ! -f "$TRANSITION_FILE" ]; then
-    echo "wipe" > "$TRANSITION_FILE"
-fi
 
 # Helper function to ensure swww daemon is running
 ensure_swww() {
@@ -50,50 +44,61 @@ apply_wallpaper() {
 
     ensure_swww
 
-    local trans_type
-    trans_type=$(cat "$TRANSITION_FILE" 2>/dev/null || echo "wipe")
+    # Pick a random transition animation each time
+    local transitions=("wipe" "wave" "grow" "outer" "fade" "any")
+    local chosen_type="${transitions[$((RANDOM % ${#transitions[@]}))]}"
 
-    case "$trans_type" in
-        grow|center)
+    case "$chosen_type" in
+        wipe)
+            local angles=(0 30 45 60 90 120 135 180 210 240 270 315)
+            local angle="${angles[$((RANDOM % ${#angles[@]}))]}"
             swww img "$img" \
-                --transition-type grow \
-                --transition-pos center \
-                --transition-duration 1.5 \
-                --transition-fps 60 \
-                --transition-bezier .54,0,.34,.99 2>/dev/null
-            ;;
-        outer)
-            swww img "$img" \
-                --transition-type outer \
-                --transition-pos center \
-                --transition-duration 1.5 \
-                --transition-fps 60 2>/dev/null
-            ;;
-        fade)
-            swww img "$img" \
-                --transition-type fade \
-                --transition-duration 1.5 \
+                --transition-type wipe \
+                --transition-angle "$angle" \
+                --transition-duration 1.3 \
                 --transition-fps 60 \
                 --transition-bezier .54,0,.34,.99 2>/dev/null
             ;;
         wave)
+            local angles=(0 30 45 60 90 120 135 180 210 240 270 315)
+            local angle="${angles[$((RANDOM % ${#angles[@]}))]}"
             swww img "$img" \
                 --transition-type wave \
-                --transition-angle 30 \
-                --transition-duration 1.5 \
+                --transition-angle "$angle" \
+                --transition-duration 1.3 \
                 --transition-fps 60 2>/dev/null
             ;;
-        random)
+        grow)
+            local positions=("center" "top" "bottom" "left" "right" "top-left" "top-right" "bottom-left" "bottom-right")
+            local pos="${positions[$((RANDOM % ${#positions[@]}))]}"
             swww img "$img" \
-                --transition-type random \
-                --transition-duration 1.5 \
-                --transition-fps 60 2>/dev/null
+                --transition-type grow \
+                --transition-pos "$pos" \
+                --transition-duration 1.3 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
             ;;
-        wipe|*)
+        outer)
+            local positions=("center" "top-left" "top-right" "bottom-left" "bottom-right")
+            local pos="${positions[$((RANDOM % ${#positions[@]}))]}"
             swww img "$img" \
-                --transition-type wipe \
-                --transition-angle 30 \
-                --transition-duration 1.5 \
+                --transition-type outer \
+                --transition-pos "$pos" \
+                --transition-duration 1.3 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
+            ;;
+        any)
+            swww img "$img" \
+                --transition-type any \
+                --transition-duration 1.3 \
+                --transition-fps 60 \
+                --transition-bezier .54,0,.34,.99 2>/dev/null
+            ;;
+        fade|*)
+            swww img "$img" \
+                --transition-type fade \
+                --transition-duration 1.3 \
                 --transition-fps 60 \
                 --transition-bezier .54,0,.34,.99 2>/dev/null
             ;;
@@ -174,24 +179,9 @@ restore_wallpaper() {
     esac
 }
 
-# Helper to choose transition effect
-choose_transition_effect() {
-    local choice
-    choice=$(echo -e "wipe (Diagonal Sweep)\ngrow (Circle Expand from Center)\nfade (Smooth Dissolve)\nwave (Fluid Wave Ripple)\nouter (Circle Shrink)\nrandom (Random Effect each time)" | fuzzel --dmenu -p "Transition Effect: ")
-    if [ -n "$choice" ]; then
-        local effect
-        effect=$(echo "$choice" | awk '{print $1}')
-        echo "$effect" > "$TRANSITION_FILE"
-        notify-send "Wallpaper Transition" "Set effect to '$effect'!" -u low -i preferences-desktop-wallpaper 2>/dev/null
-    fi
-}
-
 # --- Argument Routing ---
 if [ "$1" == "--restore" ] || [ "$1" == "-r" ] || [ "$1" == "--init" ]; then
     restore_wallpaper
-    exit 0
-elif [ "$1" == "--transition" ] || [ "$1" == "-t" ]; then
-    choose_transition_effect
     exit 0
 elif [ -n "$1" ] && [ -f "$1" ]; then
     file_path="$1"
@@ -208,8 +198,8 @@ elif [ -n "$1" ] && [ -f "$1" ]; then
     exit 0
 fi
 
-# 1. Ask user for wallpaper action
-TYPE=$(echo -e "Static (fuzzel)\nStatic (sxiv)\nLive (fuzzel)\nTransition Effect (fuzzel)" | fuzzel --dmenu -p "Wallpaper Action: ")
+# 1. Ask user for wallpaper type
+TYPE=$(echo -e "Static (fuzzel)\nStatic (sxiv)\nLive (fuzzel)" | fuzzel --dmenu -p "Wallpaper Type: ")
 
 if [ "$TYPE" == "Static (fuzzel)" ]; then
     # STATIC WALLPAPER VIA FUZZEL LOGIC
@@ -237,7 +227,4 @@ elif [ "$TYPE" == "Static (sxiv)" ]; then
         fi
         apply_wallpaper "$FULL_PATH"
     fi
-
-elif [ "$TYPE" == "Transition Effect (fuzzel)" ]; then
-    choose_transition_effect
 fi
