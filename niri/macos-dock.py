@@ -385,9 +385,11 @@ class MacOSDock(Gtk.Window):
         self.card.pack_start(self.separator, False, False, 4)
 
         # 4. Trash
+        trash_files = os.path.expanduser("~/.local/share/Trash/files")
+        has_trash = os.path.exists(trash_files) and bool(os.listdir(trash_files))
         self.trash_item = {
             "name": "Trash",
-            "icon": ["user-trash"],
+            "icon": ["user-trash-full" if has_trash else "user-trash"],
             "cmd": "nautilus trash:///",
             "app_ids": []
         }
@@ -532,6 +534,8 @@ class MacOSDock(Gtk.Window):
     # --- Jumping / Bouncing Physics Engine ---
     def get_button_for_item(self, item):
         name = item.get("name")
+        if name == "Trash":
+            return getattr(self, "trash_widget", None)
         for itm, btn in self.pinned_widgets:
             if itm.get("name") == name:
                 return btn
@@ -612,9 +616,25 @@ class MacOSDock(Gtk.Window):
         win_id = item.get("win_id")
         if win_id is not None and w.get("id") == win_id:
             return True
-        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
+
         name = (item.get("name") or "").lower()
         aid = (w.get("app_id") or "").lower()
+        title = (w.get("title") or "").lower()
+
+        # Special case for Trash: file managers like Nautilus open trash:/// with title "Trash"
+        if name == "trash":
+            fm_ids = ["nautilus", "org.gnome.nautilus", "thunar", "dolphin", "nemo", "caja", "pcmanfm"]
+            if any(fm in aid for fm in fm_ids) and "trash" in title:
+                return True
+            if "trash" in title and not aid:
+                return True
+            return False
+
+        # If window is specifically a Trash window, do not match regular file manager dock items
+        if "trash" in title and any(fm in aid for fm in ["nautilus", "org.gnome.nautilus", "thunar", "dolphin"]):
+            return False
+
+        app_ids = [a.lower() for a in item.get("app_ids", []) if a]
         for a in app_ids:
             if a in aid or aid in a:
                 return True
@@ -839,8 +859,8 @@ class MacOSDock(Gtk.Window):
             menu.append(Gtk.SeparatorMenuItem())
             menu.append(self.create_menu_item(
                 "Open Trash",
-                "system-run-symbolic",
-                lambda _: subprocess.Popen("nautilus trash:///", shell=True)
+                "folder-open-symbolic",
+                lambda _: (self.start_bouncing(item), subprocess.Popen("nautilus trash:///", shell=True))
             ))
             menu.append(self.create_menu_item(
                 "Empty Trash",
@@ -1109,6 +1129,9 @@ class MacOSDock(Gtk.Window):
         running_app_ids = set()
         for w in windows:
             aid = (w.get("app_id") or "").lower()
+            title = (w.get("title") or "").lower()
+            if any(fm in aid for fm in ["nautilus", "org.gnome.nautilus", "thunar", "dolphin"]) and "trash" in title:
+                continue
             if aid:
                 running_app_ids.add(aid)
 
@@ -1136,11 +1159,31 @@ class MacOSDock(Gtk.Window):
             title = w.get("title") or "Window"
             app_key = aid if aid else title.lower()
 
+            # Trash windows belong to the dedicated Trash item, not dynamic items
+            if "trash" in title.lower() and any(fm in aid for fm in ["nautilus", "org.gnome.nautilus", "thunar", "dolphin"]):
+                continue
+
             is_pinned = any(p in aid or aid in p for p in pinned_app_id_list) if aid else False
             if not is_pinned:
                 if app_key not in seen_unpinned:
                     seen_unpinned.add(app_key)
                     unpinned_windows.append(w)
+
+        # 3. Dynamic Trash Icon (full vs empty)
+        if hasattr(self, "trash_widget"):
+            da = getattr(self.trash_widget, "_da", None)
+            if da:
+                trash_files = os.path.expanduser("~/.local/share/Trash/files")
+                is_full = os.path.exists(trash_files) and bool(os.listdir(trash_files))
+                target_icon = "user-trash-full" if is_full else "user-trash"
+                if getattr(self, "_last_trash_icon", None) != target_icon:
+                    self._last_trash_icon = target_icon
+                    theme = Gtk.IconTheme.get_default()
+                    try:
+                        da._pb = theme.load_icon(target_icon, 44, Gtk.IconLookupFlags.FORCE_SIZE)
+                        da.queue_draw()
+                    except Exception:
+                        pass
 
         current_dynamic_ids = [getattr(w, "_app_key", None) for w in self.dynamic_widgets]
         new_dynamic_ids = [(w.get("app_id") or w.get("title") or "").lower() for w in unpinned_windows]
