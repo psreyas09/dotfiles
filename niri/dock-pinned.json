@@ -73,5 +73,15 @@
       "niri-settings",
       "niri-settings.py"
     ]
+  },
+  {
+    "name": "Discord",
+    "icon": [
+      "discord"
+    ],
+    "cmd": "/usr/bin/discord --url --",
+    "app_ids": [
+      "discord"
+    ]
   }
 ]

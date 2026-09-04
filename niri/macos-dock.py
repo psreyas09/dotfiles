@@ -647,10 +647,15 @@ class MacOSDock(Gtk.Window):
             | Gdk.EventMask.POINTER_MOTION_MASK
         )
 
+        # Drag & Reorder state
+        self.drag_data = None
+        self._just_finished_drag = False
+
         self.connect("destroy", cleanup)
         self.connect("enter-notify-event", self.on_enter_notify)
         self.connect("leave-notify-event", self.on_leave_notify)
         self.connect("motion-notify-event", self.on_motion_notify)
+        self.connect("button-release-event", self.on_window_button_release)
 
         # UI Build
         self.setup_ui()
@@ -949,9 +954,15 @@ class MacOSDock(Gtk.Window):
         dot.get_style_context().add_class("inactive")
         vbox.pack_start(dot, False, False, 0)
 
-        # Event handling: left-click (clicked), right-click (button 3), middle-click (button 2)
-        btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        # Event handling: left-click (clicked), right-click (button 3), middle-click (button 2), drag & reorder
+        btn.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+        )
         btn.connect("button-press-event", self.on_item_button_press, item, is_dynamic, win_id)
+        btn.connect("button-release-event", self.on_item_button_release, item, is_dynamic)
+        btn.connect("motion-notify-event", self.on_item_motion_notify, item, is_dynamic)
         btn.connect("clicked", self.on_item_clicked, item, win_id)
 
         btn._dot = dot
@@ -984,9 +995,115 @@ class MacOSDock(Gtk.Window):
         elif event.button == 2:  # Middle Click -> Open New Window
             self.open_new_window(item)
             return True
+        elif event.button == 1:  # Left Click -> Prepare drag & reorder
+            if item.get("name") != "Trash":
+                self.drag_data = {
+                    "item": item,
+                    "btn": btn,
+                    "start_x": event.x_root,
+                    "start_y": event.y_root,
+                    "is_dragging": False,
+                    "is_dynamic": is_dynamic,
+                    "win_id": win_id
+                }
+            return False
+        return False
+
+    def on_item_motion_notify(self, btn, event, item, is_dynamic):
+        if not self.drag_data:
+            return False
+        if not (event.state & Gdk.ModifierType.BUTTON1_MASK):
+            return False
+
+        dx = abs(event.x_root - self.drag_data["start_x"])
+        dy = abs(event.y_root - self.drag_data["start_y"])
+
+        if not self.drag_data["is_dragging"]:
+            if dx > 8 or dy > 8:
+                self.drag_data["is_dragging"] = True
+                btn.get_style_context().add_class("dragging")
+            else:
+                return False
+
+        # Live reordering during drag
+        if not is_dynamic:
+            coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
+            if coords:
+                box_x = coords[0]
+                children = self.pinned_box.get_children()
+                if len(children) > 1 and btn in children:
+                    current_idx = children.index(btn)
+                    # Find closest slot based on center of other children
+                    target_idx = min(
+                        range(len(children)),
+                        key=lambda i: abs(box_x - (children[i].get_allocation().x + children[i].get_allocation().width / 2))
+                    )
+                    if target_idx != current_idx:
+                        self.pinned_box.reorder_child(btn, target_idx)
+                        app_entry = self.pinned_apps.pop(current_idx)
+                        self.pinned_apps.insert(target_idx, app_entry)
+                        pw_entry = self.pinned_widgets.pop(current_idx)
+                        self.pinned_widgets.insert(target_idx, pw_entry)
+                        self.pinned_box.queue_draw()
+        return False
+
+    def on_item_button_release(self, btn, event, item, is_dynamic):
+        if event.button == 1 and self.drag_data:
+            was_dragging = self.drag_data.get("is_dragging", False)
+            btn.get_style_context().remove_class("dragging")
+
+            if was_dragging:
+                self._just_finished_drag = True
+                GLib.timeout_add(150, lambda: setattr(self, "_just_finished_drag", False))
+
+                if is_dynamic:
+                    coords = btn.translate_coordinates(self.pinned_box, event.x, event.y)
+                    if coords:
+                        box_x = coords[0]
+                        p_alloc = self.pinned_box.get_allocation()
+                        if -20 <= box_x <= p_alloc.width + 20:
+                            children = self.pinned_box.get_children()
+                            target_idx = len(children)
+                            if children:
+                                target_idx = min(
+                                    range(len(children)),
+                                    key=lambda i: abs(box_x - (children[i].get_allocation().x + children[i].get_allocation().width / 2))
+                                )
+                            self.pin_app(item)
+                            if target_idx < len(self.pinned_apps):
+                                new_item = self.pinned_apps.pop()
+                                self.pinned_apps.insert(target_idx, new_item)
+                                self.save_pinned_apps()
+                                self.rebuild_pinned_dock()
+                else:
+                    self.save_pinned_apps()
+
+                self.drag_data = None
+                return True
+
+            self.drag_data = None
+        return False
+
+    def on_window_button_release(self, widget, event):
+        if event.button == 1 and self.drag_data:
+            btn = self.drag_data.get("btn")
+            if btn:
+                btn.get_style_context().remove_class("dragging")
+            was_dragging = self.drag_data.get("is_dragging", False)
+            if was_dragging:
+                self._just_finished_drag = True
+                GLib.timeout_add(150, lambda: setattr(self, "_just_finished_drag", False))
+                if not self.drag_data.get("is_dynamic", False):
+                    self.save_pinned_apps()
+            self.drag_data = None
         return False
 
     def on_item_clicked(self, btn, item, win_id=None):
+        if getattr(self, "_just_finished_drag", False):
+            return
+        if self.drag_data and self.drag_data.get("is_dragging"):
+            return
+
         name = item.get("name", "")
         if name in self.bouncing_apps:
             # Already launching and bouncing! Don't spawn multiple instances on rapid clicks
@@ -1834,6 +1951,12 @@ class MacOSDock(Gtk.Window):
         #dock-item:hover,
         #dock-item:focus:hover {{
             background-color: rgba(255, 255, 255, 0.18);
+        }}
+
+        #dock-item.dragging {{
+            opacity: 0.50;
+            background-color: alpha(@accent-purple, 0.35);
+            border-radius: 12px;
         }}
 
         #dock-icon {{
