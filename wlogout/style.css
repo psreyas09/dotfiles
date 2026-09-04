@@ -1,0 +1,51 @@
+/* Wlogout Theme - Symbol-Only Glass Matrix */
+@import url("/home/sreyas/.config/waybar/current-theme.css");
+
+* {
+    font-family: sans-serif;
+    transition: all 0.2s ease-in-out;
+}
+
+window {
+    background-color: rgba(18, 18, 24, 0.85);
+}
+
+button {
+    background-color: alpha(@bg-color, 0.85);
+    border: 2px solid @border-color;
+    border-radius: 20px;
+    margin: 14px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 38%;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    outline: none;
+}
+
+button:focus {
+    background-color: alpha(@bg-color, 0.85);
+    border-color: @border-color;
+    outline: none;
+    outline-style: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+button:hover, button:focus:hover {
+    background-color: alpha(@accent-purple, 0.28);
+    border-color: @accent-purple;
+    box-shadow: 0 8px 24px alpha(@accent-purple, 0.35);
+}
+
+button:active {
+    background-color: alpha(@accent-purple, 0.50);
+    border-color: @accent-purple;
+    outline: none;
+    outline-style: none;
+}
+
+#lock { background-image: image(url("/usr/share/wlogout/icons/lock.png")); }
+#logout { background-image: image(url("/usr/share/wlogout/icons/logout.png")); }
+#suspend { background-image: image(url("/usr/share/wlogout/icons/suspend.png")); }
+#hibernate { background-image: image(url("/usr/share/wlogout/icons/hibernate.png")); }
+#shutdown { background-image: image(url("/usr/share/wlogout/icons/shutdown.png")); }
+#reboot { background-image: image(url("/usr/share/wlogout/icons/reboot.png")); }
