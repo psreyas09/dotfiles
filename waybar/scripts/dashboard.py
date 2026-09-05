@@ -153,6 +153,7 @@ class DashboardWindow(Gtk.Window):
 
         # Avatar state
         self.in_dialog = False
+        self.last_avatar_mtime = 0
         self.avatar_pixbuf_60 = None
         self.avatar_pixbuf_90 = None
         self.reload_avatar_images()
@@ -933,6 +934,11 @@ class DashboardWindow(Gtk.Window):
             return None
 
     def reload_avatar_images(self):
+        cur_p = self.get_current_avatar_path()
+        try:
+            self.last_avatar_mtime = os.path.getmtime(cur_p) if cur_p and os.path.exists(cur_p) else 0
+        except Exception:
+            self.last_avatar_mtime = 0
         self.avatar_pixbuf_60 = self.get_avatar_pixbuf(60)
         if hasattr(self, "avatar_draw_dash") and self.avatar_draw_dash:
             self.avatar_draw_dash.queue_draw()
@@ -1233,6 +1239,15 @@ class DashboardWindow(Gtk.Window):
         self.update_network_rates()
 
     def on_refresh_tick(self):
+        # Auto-detect avatar picture change
+        cur_p = self.get_current_avatar_path()
+        try:
+            cur_mtime = os.path.getmtime(cur_p) if cur_p and os.path.exists(cur_p) else 0
+        except Exception:
+            cur_mtime = 0
+        if getattr(self, "last_avatar_mtime", 0) != cur_mtime:
+            self.reload_avatar_images()
+
         if self.is_open:
             self.refresh_all_data()
         else:

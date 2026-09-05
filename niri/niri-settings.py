@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 import os
 import sys
 import glob
@@ -92,11 +92,14 @@ def get_avatar_pixbuf(size):
 def set_profile_picture(filepath):
     try:
         pb = GdkPixbuf.Pixbuf.new_from_file(filepath)
+        if hasattr(pb, 'apply_embedded_orientation'):
+            pb = pb.apply_embedded_orientation()
         pw, ph = pb.get_width(), pb.get_height()
         side = min(pw, ph)
         src_x = (pw - side) // 2
         src_y = (ph - side) // 2
         square = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, side, side)
+        square.fill(0x00000000)
         pb.copy_area(src_x, src_y, side, side, square, 0, 0)
 
         final_pb = square.scale_simple(512, 512, GdkPixbuf.InterpType.BILINEAR)
@@ -1318,40 +1321,102 @@ class NiriSettingsApp(Gtk.Window):
         btn_change = Gtk.Button(label="Change Picture...")
 
         def on_change_clicked(*_):
-            chooser = Gtk.FileChooserNative.new(
-                "Select Profile Picture",
-                self,
-                Gtk.FileChooserAction.OPEN,
-                "_Select",
-                "_Cancel"
-            )
-            filter_img = Gtk.FileFilter()
-            filter_img.set_name("Images (*.png, *.jpg, *.jpeg, *.webp, *.svg)")
-            filter_img.add_mime_type("image/png")
-            filter_img.add_mime_type("image/jpeg")
-            filter_img.add_mime_type("image/webp")
-            filter_img.add_mime_type("image/svg+xml")
-            filter_img.add_pattern("*.png")
-            filter_img.add_pattern("*.jpg")
-            filter_img.add_pattern("*.jpeg")
-            filter_img.add_pattern("*.webp")
-            filter_img.add_pattern("*.svg")
-            chooser.add_filter(filter_img)
+            selected_file = None
+            dialog_shown = False
+            try:
+                dialog = Gtk.FileChooserDialog(
+                    title="Select Profile Picture",
+                    parent=self,
+                    action=Gtk.FileChooserAction.OPEN
+                )
+                dialog.add_button("_Cancel", Gtk.ResponseType.CANCEL)
+                dialog.add_button("_Select", Gtk.ResponseType.ACCEPT)
+                dialog.set_default_response(Gtk.ResponseType.ACCEPT)
+                dialog.set_modal(True)
+                dialog.set_default_size(840, 560)
 
-            def on_resp(dialog, resp):
+                filter_img = Gtk.FileFilter()
+                filter_img.set_name("Image Files (*.png, *.jpg, *.jpeg, *.webp, *.svg)")
+                filter_img.add_mime_type("image/png")
+                filter_img.add_mime_type("image/jpeg")
+                filter_img.add_mime_type("image/webp")
+                filter_img.add_mime_type("image/svg+xml")
+                filter_img.add_pattern("*.png")
+                filter_img.add_pattern("*.jpg")
+                filter_img.add_pattern("*.jpeg")
+                filter_img.add_pattern("*.webp")
+                filter_img.add_pattern("*.svg")
+                filter_img.add_pattern("*.PNG")
+                filter_img.add_pattern("*.JPG")
+                filter_img.add_pattern("*.JPEG")
+                filter_img.add_pattern("*.WEBP")
+                filter_img.add_pattern("*.SVG")
+                dialog.add_filter(filter_img)
+
+                filter_all = Gtk.FileFilter()
+                filter_all.set_name("All Files (*.*)")
+                filter_all.add_pattern("*")
+                dialog.add_filter(filter_all)
+
+                pics_dir = os.path.expanduser("~/Pictures")
+                if os.path.isdir(pics_dir):
+                    dialog.set_current_folder(pics_dir)
+                else:
+                    dialog.set_current_folder(os.path.expanduser("~"))
+
+                # Live preview widget
+                preview = Gtk.Image()
+                dialog.set_preview_widget(preview)
+                def update_preview_cb(fc):
+                    fn = fc.get_preview_filename()
+                    try:
+                        if fn and os.path.isfile(fn):
+                            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(fn, 180, 180, True)
+                            preview.set_from_pixbuf(pb)
+                            fc.set_preview_widget_active(True)
+                        else:
+                            fc.set_preview_widget_active(False)
+                    except Exception:
+                        fc.set_preview_widget_active(False)
+
+                dialog.connect("update-preview", update_preview_cb)
+
+                dialog_shown = True
+                resp = dialog.run()
                 if resp == Gtk.ResponseType.ACCEPT:
-                    fn = dialog.get_filename()
-                    if fn and os.path.exists(fn):
-                        set_profile_picture(fn)
-                        avatar_draw.queue_draw()
-                        cur = get_current_avatar_path()
-                        if cur:
-                            path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
-                        async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
+                    selected_file = dialog.get_filename()
                 dialog.destroy()
+            except Exception as e:
+                print(f"FileChooserDialog error: {e}", file=sys.stderr)
+                selected_file = None
 
-            chooser.connect("response", on_resp)
-            chooser.show()
+            # Fallback to Zenity if GTK dialog failed to open and zenity is installed
+            if not selected_file and not dialog_shown and shutil.which("zenity"):
+                try:
+                    cmd = [
+                        "zenity",
+                        "--file-selection",
+                        "--title=Select Profile Picture",
+                        "--file-filter=Image Files (*.png, *.jpg, *.webp, *.svg) | *.png *.jpg *.jpeg *.webp *.svg *.PNG *.JPG *.JPEG *.WEBP *.SVG",
+                        "--file-filter=All Files | *"
+                    ]
+                    pics = os.path.expanduser("~/Pictures")
+                    if os.path.isdir(pics):
+                        cmd.append(f"--filename={pics}/")
+                    z_res = subprocess.run(cmd, capture_output=True, text=True)
+                    if z_res.returncode == 0 and z_res.stdout.strip():
+                        selected_file = z_res.stdout.strip()
+                except Exception:
+                    pass
+
+            if selected_file and os.path.exists(selected_file):
+                success = set_profile_picture(selected_file)
+                if success:
+                    avatar_draw.queue_draw()
+                    cur = get_current_avatar_path()
+                    if cur:
+                        path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
+                    async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
 
         btn_change.connect("clicked", on_change_clicked)
         btn_vbox.pack_start(btn_change, False, False, 0)
@@ -1360,7 +1425,11 @@ class NiriSettingsApp(Gtk.Window):
         def on_remove_clicked(*_):
             remove_profile_picture()
             avatar_draw.queue_draw()
-            path_lbl.set_text("Active: Default system icon")
+            cur = get_current_avatar_path()
+            if cur:
+                path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
+            else:
+                path_lbl.set_text("Active: Default system icon")
             async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
 
         btn_remove.connect("clicked", on_remove_clicked)
