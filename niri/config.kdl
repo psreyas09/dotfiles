@@ -238,6 +238,7 @@ spawn-at-startup "lxpolkit"
 spawn-at-startup "sh" "-c" "killall waybar; waybar"
 spawn-at-startup "swaync"
 spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"
+spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-menu.py" "--daemon"
 
 
 //spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"

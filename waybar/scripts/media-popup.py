@@ -1287,7 +1287,7 @@ class MediaPopup(Gtk.Window):
         self.title_label.set_name("media-title")
         self.title_label.set_xalign(0)
         self.title_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self.title_label.set_max_width_chars(25)
+        self.title_label.set_max_width_chars(30)
         middle_box.pack_start(self.title_label, False, False, 1)
 
         # Artist & Album
@@ -1295,14 +1295,14 @@ class MediaPopup(Gtk.Window):
         self.artist_label.set_name("media-artist")
         self.artist_label.set_xalign(0)
         self.artist_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self.artist_label.set_max_width_chars(28)
+        self.artist_label.set_max_width_chars(34)
         middle_box.pack_start(self.artist_label, False, False, 0)
 
         self.album_label = Gtk.Label(label="")
         self.album_label.set_name("media-album")
         self.album_label.set_xalign(0)
         self.album_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self.album_label.set_max_width_chars(28)
+        self.album_label.set_max_width_chars(34)
         middle_box.pack_start(self.album_label, False, False, 0)
 
         # Seekbar Row with Material You Wavy Seekbar
@@ -1836,22 +1836,30 @@ class MediaPopup(Gtk.Window):
         }}
 
         #media-title {{
-            font-size: 14.5px;
-            font-weight: 800;
+            font-family: "Google Sans Flex", "Rubik", "Inter", sans-serif;
+            font-size: 19px;
+            font-weight: 600;
             color: @fg-color;
+            margin-top: 1px;
+            margin-bottom: 2px;
             font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 
         #media-artist {{
-            font-size: 12px;
-            font-weight: 600;
-            color: @accent-purple;
+            font-family: "Google Sans Flex", "Rubik", "Inter", sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            color: @comment-color;
+            margin-bottom: 2px;
             font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 
         #media-album {{
-            font-size: 11px;
-            color: @comment-color;
+            font-family: "Google Sans Flex", "Rubik", "Inter", sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            color: @accent-purple;
+            margin-bottom: 4px;
             font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 

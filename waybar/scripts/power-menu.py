@@ -2,23 +2,13 @@
 import os
 import sys
 import signal
-import subprocess
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-import gi
-gi.require_version('Gtk', '3.0')
-gi.require_version('GtkLayerShell', '0.1')
-from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf
 
 PID_FILE = "/tmp/waybar_power_menu.pid"
-ASSETS_DIR = "/home/sreyas/.config/waybar/assets"
-GIF_PATH = os.path.join(ASSETS_DIR, "kurukuru_76.gif")
-FALLBACK_GIF_PATH = os.path.join(ASSETS_DIR, "kurukuru.gif")
 
-app_instance = None
-
-def toggle_or_exit():
+def check_single_instance():
+    """
+    Ultra-fast signal check (runs in <15ms before heavy GTK imports)
+    """
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, "r") as f:
@@ -34,6 +24,29 @@ def toggle_or_exit():
 
     with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
+
+# Fast exit if daemon already running
+if "--daemon" not in sys.argv:
+    check_single_instance()
+else:
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+# Heavy GTK imports only loaded by daemon/cold-start
+import subprocess
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('GtkLayerShell', '0.1')
+from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, GdkPixbuf
+
+ASSETS_DIR = "/home/sreyas/.config/waybar/assets"
+GIF_PATH = os.path.join(ASSETS_DIR, "kurukuru_76.gif")
+FALLBACK_GIF_PATH = os.path.join(ASSETS_DIR, "kurukuru.gif")
+
+app_instance = None
 
 def cleanup(*_):
     try:
@@ -61,9 +74,9 @@ class CaelestiaPowerMenu(Gtk.Window):
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.BOTTOM, False)
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.LEFT, False)
 
-        # Animation parameters: slide in from right margin
+        # Animation parameters: start close to screen edge (-35px) for instantaneous feel
         self.target_margin_right = 20
-        self.start_margin_right = -110
+        self.start_margin_right = -35
 
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, self.start_margin_right)
         Gtk.Widget.set_opacity(self, 0.0)
@@ -79,12 +92,11 @@ class CaelestiaPowerMenu(Gtk.Window):
         self.connect("key-press-event", self.on_key_press)
         self.connect("focus-out-event", self.on_focus_out)
 
-        # Animation states
+        # State tracking
+        self.is_visible_state = False
+        self.is_animating = False
         self.anim_start = None
         self.close_start = None
-        self.is_closing = False
-        self.pending_action = None
-        self.add_tick_callback(self.on_animate_in)
 
         # UI Build
         self.setup_ui()
@@ -94,18 +106,44 @@ class CaelestiaPowerMenu(Gtk.Window):
         # Prevent immediate dismiss if focus shifts during initial map
         if self.anim_start:
             now = GLib.get_monotonic_time() / 1_000_000
-            if (now - self.anim_start) < 0.25:
+            if (now - self.anim_start) < 0.20:
                 return False
-        self.close_animated()
+        if self.is_visible_state and not self.is_animating:
+            self.close_animated()
         return False
 
-    # --- Caelestia Smooth Animations ---
+    def toggle_menu(self):
+        if self.is_visible_state:
+            self.close_animated()
+        else:
+            self.open_animated()
+
+    def open_animated(self):
+        self.is_visible_state = True
+        self.is_animating = True
+        self.anim_start = None
+
+        # Reset dummy focus so no action button has purple highlight initially
+        if hasattr(self, "dummy_focus"):
+            self.dummy_focus.grab_focus()
+
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, self.start_margin_right)
+        Gtk.Widget.set_opacity(self, 0.0)
+        self.show_all()
+
+        if hasattr(self, "dummy_focus"):
+            self.dummy_focus.grab_focus()
+
+        self.add_tick_callback(self.on_animate_in)
+
+    # --- Caelestia Snappy Smooth Animations ---
     def on_animate_in(self, widget, frame_clock):
         now = frame_clock.get_frame_time() / 1_000_000
         if self.anim_start is None:
             self.anim_start = now
         elapsed = now - self.anim_start
-        progress = min(1.0, elapsed / 0.26)
+        # Snappy 180ms entrance
+        progress = min(1.0, elapsed / 0.18)
         # Material 3 Expressive Spatial deceleration ease-out
         ease = 1.0 - (1.0 - progress) ** 3
 
@@ -116,20 +154,24 @@ class CaelestiaPowerMenu(Gtk.Window):
         if progress >= 1.0:
             Gtk.Widget.set_opacity(self, 1.0)
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, self.target_margin_right)
+            self.is_animating = False
             return False
         return True
 
     def close_animated(self, action=None, *_):
-        if self.is_closing:
+        if not self.is_visible_state:
             return
-        self.is_closing = True
-        self.pending_action = action
+        self.is_visible_state = False
+        self.is_animating = True
         self.close_start = None
-        try:
-            if os.path.exists(PID_FILE):
-                os.remove(PID_FILE)
-        except OSError:
-            pass
+
+        # Execute action IMMEDIATELY for 0ms lag
+        if action:
+            try:
+                subprocess.Popen(action, shell=isinstance(action, str))
+            except Exception as e:
+                print("Failed to run action:", e, file=sys.stderr)
+
         self.add_tick_callback(self.on_animate_out)
 
     def on_animate_out(self, widget, frame_clock):
@@ -137,22 +179,19 @@ class CaelestiaPowerMenu(Gtk.Window):
         if self.close_start is None:
             self.close_start = now
         elapsed = now - self.close_start
-        progress = min(1.0, elapsed / 0.18)
-        # Smooth ease-in slide out
+        progress = min(1.0, elapsed / 0.14)
+        # Fast ease-in slide out
         ease = progress ** 2
 
         Gtk.Widget.set_opacity(self, max(0.0, 1.0 - ease))
-        curr_margin = int(self.target_margin_right - 130 * ease)
+        curr_margin = int(self.target_margin_right - 60 * ease)
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, curr_margin)
 
         if progress >= 1.0:
-            act = self.pending_action
-            cleanup()
-            if act:
-                try:
-                    subprocess.Popen(act, shell=isinstance(act, str))
-                except Exception as e:
-                    print("Failed to run action:", e, file=sys.stderr)
+            self.is_animating = False
+            self.hide()
+            if "--daemon" not in sys.argv:
+                cleanup()
             return False
         return True
 
@@ -202,6 +241,14 @@ class CaelestiaPowerMenu(Gtk.Window):
         self.card.set_name("power-card")
         self.add(self.card)
 
+        # Invisible dummy focus holder so the first button is NOT focused by default
+        self.dummy_focus = Gtk.Button()
+        self.dummy_focus.set_name("dummy-focus")
+        self.dummy_focus.set_can_focus(True)
+        self.dummy_focus.set_no_show_all(False)
+        self.dummy_focus.set_size_request(0, 0)
+        self.card.pack_start(self.dummy_focus, False, False, 0)
+
         # 1. Lock Screen (L)
         self.btn_lock = self.create_button("", "Lock Screen (L)", "session-btn-lock", self.action_lock)
         self.card.pack_start(self.btn_lock, False, False, 0)
@@ -214,7 +261,7 @@ class CaelestiaPowerMenu(Gtk.Window):
         self.btn_logout = self.create_button("󰍃", "Log Out (E)", "session-btn-logout", self.action_logout)
         self.card.pack_start(self.btn_logout, False, False, 0)
 
-        # 4. Animated GIF in the Center (Authentic Caelestia Kurukuru / Herta spinning)
+        # 4. Animated GIF in the Center (Authentic Caelestia Kurukuru with adjusted speed)
         gif_file = GIF_PATH if os.path.exists(GIF_PATH) else FALLBACK_GIF_PATH
         if os.path.exists(gif_file):
             try:
@@ -274,6 +321,16 @@ class CaelestiaPowerMenu(Gtk.Window):
             background: transparent;
         }}
 
+        #dummy-focus {{
+            min-width: 0;
+            min-height: 0;
+            padding: 0;
+            margin: 0;
+            opacity: 0;
+            border: none;
+            background: transparent;
+        }}
+
         #power-card {{
             background-color: alpha(@bg-color, 0.90);
             border: 1.5px solid alpha(@accent-purple, 0.35);
@@ -282,7 +339,7 @@ class CaelestiaPowerMenu(Gtk.Window):
             box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
         }}
 
-        /* Session Buttons */
+        /* Default Session Buttons (Unhovered state) */
         .caelestia-session-btn {{
             background-image: none;
             background-color: alpha(@fg-color, 0.08);
@@ -302,19 +359,24 @@ class CaelestiaPowerMenu(Gtk.Window):
             transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
         }}
 
-        /* Hover & Focus state: Material 3 radius morphing (20px -> 28px) & accent color */
-        .caelestia-session-btn:hover,
-        .caelestia-session-btn:focus {{
+        /* ONLY on Mouse Hover does it get the full purple Material accent */
+        .caelestia-session-btn:hover {{
             background-color: @accent-purple;
             border-color: alpha(@accent-purple, 0.85);
             border-radius: 28px;
             box-shadow: 0 6px 20px alpha(@accent-purple, 0.55);
         }}
 
-        .caelestia-session-btn:hover #btn-icon,
-        .caelestia-session-btn:focus #btn-icon {{
+        .caelestia-session-btn:hover #btn-icon {{
             color: @bg-color;
             font-size: 28px;
+        }}
+
+        /* Keyboard focus without hover: subtle outline only, NO purple fill */
+        .caelestia-session-btn:focus:not(:hover) {{
+            border-color: alpha(@accent-purple, 0.75);
+            background-color: alpha(@fg-color, 0.12);
+            border-radius: 24px;
         }}
 
         /* Active / Pressed state: compresses corner radius to 12px */
@@ -325,15 +387,13 @@ class CaelestiaPowerMenu(Gtk.Window):
         }}
 
         /* Special styling for Power Off Button */
-        #session-btn-power:hover,
-        #session-btn-power:focus {{
+        #session-btn-power:hover {{
             background-color: @accent-red;
             border-color: alpha(@accent-red, 0.85);
             box-shadow: 0 6px 20px alpha(@accent-red, 0.55);
         }}
 
-        #session-btn-power:hover #btn-icon,
-        #session-btn-power:focus #btn-icon {{
+        #session-btn-power:hover #btn-icon {{
             color: #ffffff;
             font-size: 28px;
         }}
@@ -379,15 +439,20 @@ class CaelestiaPowerMenu(Gtk.Window):
 
 def main():
     global app_instance
-    toggle_or_exit()
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
 
     app = CaelestiaPowerMenu()
     app_instance = app
-    signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.close_animated))
+    signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.toggle_menu))
 
-    app.show_all()
+    if "--daemon" in sys.argv:
+        # Resident daemon mode: start hidden and ready to wake instantly
+        pass
+    else:
+        # Direct launch: open animated immediately
+        app.open_animated()
+
     Gtk.main()
 
 if __name__ == "__main__":
