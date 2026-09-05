@@ -292,19 +292,194 @@ class MaterialWavySeekBar(Gtk.DrawingArea):
         cr.fill()
 
 
-class BongoCatVisualizer(Gtk.DrawingArea):
+class CircularCoverVisualizer(Gtk.DrawingArea):
     """
-    Animated Bongo Cat with dynamic reactive audio equalizer bars:
-    - Uses authentic Caelestia Shell Bongo Cat frames (bongo_0.png, bongo_1.png, bongo_rest.png).
-    - Left/Right paws alternate drumming rapidly to music beat when playing.
-    - Peaceful resting paws (bongo_rest.png) when paused with zero idle CPU.
-    - Floating musical notes (♪, ♫, ♬) drift upwards with crisp Pango glyphs.
-    - Dynamic 14-band audio spectrum visualizer across the bottom using Wallust theme gradients.
-    - Interactive: click Bongo Cat for a playful rapid drumroll and heart burst!
+    Caelestia-style circular cover art with 360-degree radial audio visualizer:
+    - Center: Album art clipped to a circle with smooth Wallust accent ring.
+    - Outer: Radial audio spectrum bars radiating outward in a circle.
+    - Reactively pulses with music when playing; smoothly retracts when paused.
     """
     def __init__(self):
         super().__init__()
-        self.set_size_request(150, 110)
+        self.set_size_request(148, 148)
+        self.set_valign(Gtk.Align.CENTER)
+        self.set_halign(Gtk.Align.CENTER)
+
+        self.phase = 0.0
+        self.is_playing = False
+        self.num_bars = 44
+        self.bars = [0.08] * self.num_bars
+        self.colors = parse_theme_colors()
+        self.last_frame_time = None
+        self.art_pixbuf = None
+        self.scaled_art = None
+        self.current_r_art = 45.0
+        self.on_cover_clicked = None
+
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self.on_clicked)
+        self.connect("draw", self.on_draw)
+        self.add_tick_callback(self.on_tick)
+
+    def on_clicked(self, widget, event):
+        if event.button == 1 and self.on_cover_clicked:
+            self.on_cover_clicked(None)
+            return True
+        return False
+
+    def set_playing(self, is_playing):
+        self.is_playing = is_playing
+
+    def set_art_pixbuf(self, pixbuf):
+        self.art_pixbuf = pixbuf
+        self.scaled_art = None
+        self.queue_draw()
+
+    def on_tick(self, widget, frame_clock):
+        now = frame_clock.get_frame_time() / 1_000_000
+        if self.last_frame_time is None:
+            self.last_frame_time = now
+        dt = min(0.05, now - self.last_frame_time)
+        self.last_frame_time = now
+
+        need_redraw = False
+
+        if self.is_playing:
+            self.phase = (self.phase + 4.8 * dt) % (2.0 * math.pi)
+            for i in range(self.num_bars):
+                h1 = math.sin(self.phase * 1.5 + i * 0.55)**2
+                h2 = math.cos(self.phase * 0.9 + i * 0.35)**2
+                target = 0.12 + 0.88 * (h1 * 0.65 + h2 * 0.35)
+                self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
+            need_redraw = True
+        else:
+            decaying = False
+            for i in range(self.num_bars):
+                if self.bars[i] > 0.02:
+                    self.bars[i] += (0.01 - self.bars[i]) * min(1.0, dt * 8.0)
+                    decaying = True
+            if decaying:
+                need_redraw = True
+
+        if need_redraw:
+            self.queue_draw()
+        return True
+
+    def on_draw(self, widget, cr):
+        alloc = self.get_allocation()
+        w = alloc.width
+        h = alloc.height
+        cx = w / 2.0
+        cy = h / 2.0
+
+        r_art = self.current_r_art
+        r_start = r_art + 5.0
+        max_len = 16.0
+
+        accent = self.colors.get('accent-purple', (0.71, 0.34, 0.36, 1.0))
+        accent_blue = self.colors.get('accent-blue', (0.39, 0.43, 0.55, 1.0))
+
+        # 1. Draw radial visualizer bars around circle
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        cr.set_line_width(2.5)
+
+        for i in range(self.num_bars):
+            theta = i * 2.0 * math.pi / self.num_bars - math.pi / 2.0
+            val = self.bars[i]
+            bar_len = 2.0 + val * max_len
+
+            t = (math.sin(theta) + 1.0) / 2.0
+            r = accent[0] * (1.0 - t) + accent_blue[0] * t
+            g = accent[1] * (1.0 - t) + accent_blue[1] * t
+            b = accent[2] * (1.0 - t) + accent_blue[2] * t
+
+            cr.set_source_rgba(r, g, b, 0.85 if self.is_playing else 0.30)
+            x0 = cx + r_start * math.cos(theta)
+            y0 = cy + r_start * math.sin(theta)
+            x1 = cx + (r_start + bar_len) * math.cos(theta)
+            y1 = cy + (r_start + bar_len) * math.sin(theta)
+            cr.move_to(x0, y0)
+            cr.line_to(x1, y1)
+            cr.stroke()
+
+        # 2. Draw circular album art inside circular mask
+        diam = int(r_art * 2)
+        if self.art_pixbuf:
+            if not self.scaled_art:
+                pw, ph = self.art_pixbuf.get_width(), self.art_pixbuf.get_height()
+                min_dim = min(pw, ph)
+                cropped = self.art_pixbuf.new_subpixbuf((pw - min_dim)//2, (ph - min_dim)//2, min_dim, min_dim)
+                self.scaled_art = cropped.scale_simple(diam, diam, GdkPixbuf.InterpType.BILINEAR)
+
+            cr.save()
+            cr.new_path()
+            cr.arc(cx, cy, r_art, 0, 2.0 * math.pi)
+            cr.clip()
+            Gdk.cairo_set_source_pixbuf(cr, self.scaled_art, cx - r_art, cy - r_art)
+            cr.paint()
+            cr.restore()
+        else:
+            # Placeholder vinyl disc / gradient
+            cr.save()
+            cr.new_path()
+            cr.arc(cx, cy, r_art, 0, 2.0 * math.pi)
+            cr.clip()
+            pat = cairo.RadialGradient(cx, cy, 2.0, cx, cy, r_art)
+            pat.add_color_stop_rgba(0, accent[0]*0.50, accent[1]*0.50, accent[2]*0.50, 0.9)
+            pat.add_color_stop_rgba(0.72, 0.12, 0.10, 0.13, 0.95)
+            pat.add_color_stop_rgba(1.0, 0.08, 0.07, 0.09, 0.98)
+            cr.set_source(pat)
+            cr.paint()
+
+            # Concentric vinyl groove rings
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.07)
+            cr.set_line_width(1.0)
+            cr.new_sub_path()
+            cr.arc(cx, cy, r_art * 0.58, 0, 2.0 * math.pi)
+            cr.stroke()
+            cr.new_sub_path()
+            cr.arc(cx, cy, r_art * 0.78, 0, 2.0 * math.pi)
+            cr.stroke()
+
+            # Center record label circle
+            cr.set_source_rgba(accent[0], accent[1], accent[2], 0.22)
+            cr.new_sub_path()
+            cr.arc(cx, cy, 18.0, 0, 2.0 * math.pi)
+            cr.fill()
+
+            # Center musical glyph with Pango
+            layout = self.create_pango_layout("󰝚")
+            desc = Pango.FontDescription("Symbols Nerd Font, JetBrains Mono 18")
+            layout.set_font_description(desc)
+            ink, log = layout.get_pixel_extents()
+            cr.set_source_rgba(accent[0], accent[1], accent[2], 0.90)
+            cr.move_to(cx - log.width / 2.0, cy - log.height / 2.0)
+            PangoCairo.show_layout(cr, layout)
+            cr.restore()
+
+        # 3. Outer border ring for album art
+        cr.new_path()
+        cr.set_source_rgba(accent[0], accent[1], accent[2], 0.75)
+        cr.set_line_width(2.0)
+        cr.arc(cx, cy, r_art, 0, 2.0 * math.pi)
+        cr.stroke()
+
+        return False
+
+
+class BongoCatVisualizer(Gtk.DrawingArea):
+    """
+    Authentic Caelestia Shell Bongo Cat:
+    - Left/Right paws alternate drumming rapidly to music beat when playing.
+    - Peaceful resting paws (bongo_rest.png) when paused with zero idle CPU.
+    - Floating musical notes (♪, ♫, ♬) drift upwards with crisp Pango glyphs.
+    - Interactive: click Bongo Cat for a playful rapid drumroll and heart burst!
+    - Borderless and box-free, sitting directly on the card background.
+    """
+    def __init__(self):
+        super().__init__()
+        self.set_size_request(135, 110)
+        self.set_valign(Gtk.Align.CENTER)
         self.set_can_focus(False)
         self.set_tooltip_text("Bongo Cat ~ Click to drumroll!")
 
@@ -312,7 +487,6 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         self.is_playing = False
         self.drumroll_time = 0.0
         self.notes = []
-        self.bars = [0.08] * 14
         self.colors = parse_theme_colors()
         self.last_frame_time = None
 
@@ -320,7 +494,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         self.pix_f0 = None
         self.pix_f1 = None
         self.pix_rest = None
-        self._load_bongo_pixbufs(130, 82)
+        self._load_bongo_pixbufs(125, 79)
 
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self.on_clicked)
@@ -371,30 +545,12 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             if self.drumroll_time > 0:
                 self.drumroll_time = max(0.0, self.drumroll_time - dt)
 
-            # Animate dynamic harmonic visualizer bars
-            for i in range(len(self.bars)):
-                h1 = math.sin(self.phase * 1.5 + i * 0.7)**2
-                h2 = math.cos(self.phase * 0.9 + i * 0.4)**2
-                target = 0.20 + 0.75 * (h1 * 0.6 + h2 * 0.4)
-                if self.drumroll_time > 0:
-                    target = min(1.0, target * 1.35)
-                self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
-
             # Random floating music note
             if random.random() < 0.045 and len(self.notes) < 4:
                 char = random.choice(['♪', '♫', '♬'])
                 self.notes.append([random.uniform(-18, 18), 0.0, 1.0, char])
 
             need_redraw = True
-        else:
-            # Decay visualizer bars to resting baseline
-            decaying = False
-            for i in range(len(self.bars)):
-                if self.bars[i] > 0.04:
-                    self.bars[i] += (0.02 - self.bars[i]) * min(1.0, dt * 8.0)
-                    decaying = True
-            if decaying:
-                need_redraw = True
 
         # Float and fade floating music notes
         if self.notes:
@@ -417,38 +573,9 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         w = alloc.width
         h = alloc.height
 
-        accent = self.colors.get('accent-purple', (0.7, 0.4, 0.8, 1.0))
-        accent_blue = self.colors.get('accent-blue', (0.35, 0.55, 0.85, 1.0))
+        accent = self.colors.get('accent-purple', (0.71, 0.34, 0.36, 1.0))
 
-        # 1. Background Equalizer Bars
-        num_bars = len(self.bars)
-        bar_w = 5.0
-        gap = 3.5
-        total_w = num_bars * bar_w + (num_bars - 1) * gap
-        start_x = (w - total_w) / 2.0
-        base_y = h - 6.0
-
-        for i, val in enumerate(self.bars):
-            bx = start_x + i * (bar_w + gap)
-            bh = max(3.0, val * 26.0)
-            by = base_y - bh
-
-            t = i / max(1, num_bars - 1)
-            r = accent[0] * (1.0 - t) + accent_blue[0] * t
-            g = accent[1] * (1.0 - t) + accent_blue[1] * t
-            b = accent[2] * (1.0 - t) + accent_blue[2] * t
-
-            cr.set_source_rgba(r, g, b, 0.65)
-            rad = 2.0
-            cr.new_sub_path()
-            cr.arc(bx + rad, by + rad, rad, math.pi, 3 * math.pi / 2)
-            cr.arc(bx + bar_w - rad, by + rad, rad, 3 * math.pi / 2, 2 * math.pi)
-            cr.arc(bx + bar_w - rad, base_y - rad, rad, 0, math.pi / 2)
-            cr.arc(bx + rad, base_y - rad, rad, math.pi / 2, math.pi)
-            cr.close_path()
-            cr.fill()
-
-        # 2. Authentic Caelestia Bongo Cat
+        # Authentic Caelestia Bongo Cat
         cat_pix = None
         if self.is_playing or self.drumroll_time > 0:
             is_f0 = (math.sin(self.phase * 2.0) >= 0)
@@ -461,11 +588,11 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             cat_h = cat_pix.get_height()
             cat_x = (w - cat_w) / 2.0
             bob = math.sin(self.phase * 4.0) * 1.5 if (self.is_playing or self.drumroll_time > 0) else 0.0
-            cat_y = 6.0 + bob
+            cat_y = max(4.0, (h - cat_h) / 2.0 + bob)
             Gdk.cairo_set_source_pixbuf(cr, cat_pix, cat_x, cat_y)
             cr.paint()
 
-        # 3. Floating Notes (♪, ♫, ♬, ♥)
+        # Floating Notes (♪, ♫, ♬, ♥)
         if self.notes:
             layout = self.create_pango_layout("")
             desc = Pango.FontDescription("Symbols Nerd Font, DejaVu Sans 11")
@@ -474,7 +601,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             for nx, ny, alpha, char in self.notes:
                 cr.set_source_rgba(accent[0], accent[1], accent[2], alpha * 0.9)
                 layout.set_text(char, -1)
-                cr.move_to(w / 2.0 + nx, 18.0 + ny)
+                cr.move_to(w / 2.0 + nx, 14.0 + ny)
                 PangoCairo.show_layout(cr, layout)
 
         return False
@@ -484,7 +611,7 @@ class MediaPopup(Gtk.Window):
     def __init__(self):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.set_title("Waybar Media Overview")
-        self.set_default_size(520, 140)
+        self.set_default_size(630, 205)
         self.set_resizable(False)
 
         # Layer Shell Setup
@@ -497,7 +624,7 @@ class MediaPopup(Gtk.Window):
         # Position directly underneath group/media with an 8px gap
         self.target_margin_top = 8
         self.start_margin_top = -6
-        self.target_margin_right = 380
+        self.target_margin_right = 430
 
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, self.target_margin_right)
@@ -619,60 +746,62 @@ class MediaPopup(Gtk.Window):
 
     def setup_ui(self):
         # Main Container
-        self.card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        self.card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         self.card.set_name("media-card")
         self.add(self.card)
 
-        # Left Column: Album Art
-        art_frame = Gtk.Frame()
-        art_frame.set_name("art-frame")
-        art_frame.set_shadow_type(Gtk.ShadowType.NONE)
-        art_frame.set_valign(Gtk.Align.CENTER)
-        self.art_image = Gtk.Image()
-        self.art_image.set_size_request(90, 90)
-        art_frame.add(self.art_image)
-        self.card.pack_start(art_frame, False, False, 0)
+        # Left Column: Caelestia 360-degree Radial Cover Visualizer
+        self.cover_vis = CircularCoverVisualizer()
+        self.cover_vis.on_cover_clicked = self.on_play_clicked
+        self.card.pack_start(self.cover_vis, False, False, 0)
 
-        # Right Column: Track Info + Seekbar + Controls
-        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.card.pack_start(right_box, True, True, 0)
+        # Middle Column: App Badge, Title, Artist, Album, Seekbar, M3 Controls
+        middle_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        middle_box.set_valign(Gtk.Align.CENTER)
+        self.card.pack_start(middle_box, True, True, 0)
 
-        # Title row with Close button
-        top_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        right_box.pack_start(top_row, False, False, 0)
+        # Top Header Row: App Badge pill & Close button
+        header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        middle_box.pack_start(header_row, False, False, 0)
 
-        self.title_label = Gtk.Label(label="No Media Playing")
-        self.title_label.set_name("media-title")
-        self.title_label.set_xalign(0)
-        self.title_label.set_ellipsize(3) # PANGO_ELLIPSIZE_END
-        self.title_label.set_max_width_chars(24)
-        top_row.pack_start(self.title_label, True, True, 0)
+        self.app_badge = Gtk.Label(label="󰝚 Standby")
+        self.app_badge.set_name("app-badge")
+        self.app_badge.set_xalign(0)
+        header_row.pack_start(self.app_badge, False, False, 0)
 
         btn_close = Gtk.Button(label="󰅖")
         btn_close.set_name("btn-close")
         btn_close.set_relief(Gtk.ReliefStyle.NONE)
         btn_close.connect("clicked", self.close_animated)
-        top_row.pack_end(btn_close, False, False, 0)
+        header_row.pack_end(btn_close, False, False, 0)
+
+        # Title
+        self.title_label = Gtk.Label(label="No Media Playing")
+        self.title_label.set_name("media-title")
+        self.title_label.set_xalign(0)
+        self.title_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.title_label.set_max_width_chars(25)
+        middle_box.pack_start(self.title_label, False, False, 1)
 
         # Artist & Album
         self.artist_label = Gtk.Label(label="")
         self.artist_label.set_name("media-artist")
         self.artist_label.set_xalign(0)
-        self.artist_label.set_ellipsize(3)
+        self.artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.artist_label.set_max_width_chars(28)
-        right_box.pack_start(self.artist_label, False, False, 0)
+        middle_box.pack_start(self.artist_label, False, False, 0)
 
         self.album_label = Gtk.Label(label="")
         self.album_label.set_name("media-album")
         self.album_label.set_xalign(0)
-        self.album_label.set_ellipsize(3)
+        self.album_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.album_label.set_max_width_chars(28)
-        right_box.pack_start(self.album_label, False, False, 0)
+        middle_box.pack_start(self.album_label, False, False, 0)
 
         # Seekbar Row with Material You Wavy Seekbar
         seek_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         seek_row.set_name("seek-row")
-        right_box.pack_start(seek_row, False, False, 2)
+        middle_box.pack_start(seek_row, False, False, 3)
 
         self.time_cur = Gtk.Label(label="0:00")
         self.time_cur.set_name("time-label")
@@ -689,41 +818,38 @@ class MediaPopup(Gtk.Window):
         self.time_tot.set_name("time-label")
         seek_row.pack_end(self.time_tot, False, False, 0)
 
-        # Player Controls Row
-        ctrl_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        # Player Controls Row (Material 3 UI circular buttons)
+        ctrl_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         ctrl_row.set_name("ctrl-row")
         ctrl_row.set_halign(Gtk.Align.CENTER)
-        right_box.pack_start(ctrl_row, False, False, 4)
+        middle_box.pack_start(ctrl_row, False, False, 2)
 
         self.btn_prev = Gtk.Button(label="󰒮")
-        self.btn_prev.set_name("media-ctrl-btn")
+        self.btn_prev.set_name("m3-btn-prev")
+        self.btn_prev.get_style_context().add_class("m3-tonal-btn")
         self.btn_prev.connect("clicked", self.on_prev_clicked)
         ctrl_row.pack_start(self.btn_prev, False, False, 0)
 
         self.btn_play = Gtk.Button(label="󰐎")
-        self.btn_play.set_name("media-play-btn")
+        self.btn_play.set_name("m3-btn-play")
         self.btn_play.connect("clicked", self.on_play_clicked)
         ctrl_row.pack_start(self.btn_play, False, False, 0)
 
         self.btn_next = Gtk.Button(label="󰒭")
-        self.btn_next.set_name("media-ctrl-btn")
+        self.btn_next.set_name("m3-btn-next")
+        self.btn_next.get_style_context().add_class("m3-tonal-btn")
         self.btn_next.connect("clicked", self.on_next_clicked)
         ctrl_row.pack_start(self.btn_next, False, False, 0)
 
-        # Right Column: Bongo Cat + Dynamic Audio Visualizer
-        bongo_frame = Gtk.Frame()
-        bongo_frame.set_name("bongo-frame")
-        bongo_frame.set_shadow_type(Gtk.ShadowType.NONE)
-        bongo_frame.set_valign(Gtk.Align.CENTER)
+        # Right Column: Bongo Cat Visualizer (No border or box outside!)
         self.bongo_cat = BongoCatVisualizer()
-        bongo_frame.add(self.bongo_cat)
-        self.card.pack_end(bongo_frame, False, False, 0)
+        self.card.pack_end(self.bongo_cat, False, False, 0)
 
     def on_prev_clicked(self, btn):
         if self.player:
             self.player.previous()
 
-    def on_play_clicked(self, btn):
+    def on_play_clicked(self, btn=None):
         if self.player:
             self.player.play_pause()
 
@@ -754,8 +880,34 @@ class MediaPopup(Gtk.Window):
         s = secs % 60
         return f"{m}:{s:02d}"
 
+    def get_player_display(self):
+        if not self.player:
+            return "󰝚 Standby"
+        name = (getattr(self.player.props, "player_name", "") or "").lower()
+        mapping = {
+            "spotify": ("󰓇", "Spotify"),
+            "strawberry": ("󰝚", "Strawberry"),
+            "firefox": ("󰈹", "Firefox"),
+            "chromium": ("󰊯", "Chromium"),
+            "chrome": ("󰊯", "Google Chrome"),
+            "brave": ("󰊯", "Brave"),
+            "vlc": ("󰕼", "VLC"),
+            "mpv": ("󰐹", "MPV"),
+            "apple_music": ("󰝚", "Apple Music"),
+            "youtube": ("󰗃", "YouTube"),
+            "cider": ("󰝚", "Cider"),
+            "rhythmbox": ("󰝚", "Rhythmbox"),
+            "audacious": ("󰝚", "Audacious"),
+        }
+        for k, (icon, label) in mapping.items():
+            if k in name:
+                return f"{icon} {label}"
+        clean_name = self.player.props.player_name.split('.')[0].capitalize()
+        return f"󰝚 {clean_name}"
+
     def update_all(self):
         if not self.player:
+            self.app_badge.set_text("󰝚 Standby")
             self.title_label.set_text("No Media Playing")
             self.artist_label.set_text("")
             self.album_label.set_text("")
@@ -767,7 +919,12 @@ class MediaPopup(Gtk.Window):
             self.time_tot.set_text("0:00")
             if hasattr(self, "bongo_cat"):
                 self.bongo_cat.set_playing(False)
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_playing(False)
             return
+
+        # App badge
+        self.app_badge.set_text(self.get_player_display())
 
         # Title
         title = self.player.get_title() or "Unknown Title"
@@ -787,7 +944,7 @@ class MediaPopup(Gtk.Window):
             self.last_art_url = art_url
             self.load_art(art_url)
 
-        # Play/Pause Icon and Wave state
+        # Play/Pause Icon and Wave/Visualizer state
         self.update_play_icon()
 
         # Seekbar Range and Value
@@ -800,6 +957,8 @@ class MediaPopup(Gtk.Window):
             self.seekbar.set_playing(False)
             if hasattr(self, "bongo_cat"):
                 self.bongo_cat.set_playing(False)
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_playing(False)
             return
         status = self.player.get_property("playback-status")
         is_playing = (status == Playerctl.PlaybackStatus.PLAYING)
@@ -810,6 +969,8 @@ class MediaPopup(Gtk.Window):
         self.seekbar.set_playing(is_playing)
         if hasattr(self, "bongo_cat"):
             self.bongo_cat.set_playing(is_playing)
+        if hasattr(self, "cover_vis"):
+            self.cover_vis.set_playing(is_playing)
 
     def update_seekbar_range(self):
         if not self.player:
@@ -841,7 +1002,7 @@ class MediaPopup(Gtk.Window):
                 self.update_seekbar()
         return True
 
-    def get_square_pixbuf(self, path, size=90):
+    def get_square_pixbuf(self, path, size=120):
         orig = GdkPixbuf.Pixbuf.new_from_file(path)
         w, h = orig.get_width(), orig.get_height()
         if w == h:
@@ -860,8 +1021,8 @@ class MediaPopup(Gtk.Window):
         try:
             if art_url.startswith("file://"):
                 path = urllib.parse.unquote(art_url[7:])
-                pixbuf = self.get_square_pixbuf(path, 90)
-                self.art_image.set_from_pixbuf(pixbuf)
+                pixbuf = self.get_square_pixbuf(path, 120)
+                self.cover_vis.set_art_pixbuf(pixbuf)
             elif art_url.startswith("http://") or art_url.startswith("https://"):
                 import hashlib
                 cache_dir = "/tmp/waybar_art_cache"
@@ -872,15 +1033,15 @@ class MediaPopup(Gtk.Window):
                 if not os.path.exists(cached_file):
                     urllib.request.urlretrieve(art_url, cached_file)
 
-                pixbuf = self.get_square_pixbuf(cached_file, 90)
-                self.art_image.set_from_pixbuf(pixbuf)
+                pixbuf = self.get_square_pixbuf(cached_file, 120)
+                self.cover_vis.set_art_pixbuf(pixbuf)
             else:
                 self.load_placeholder_art()
         except Exception:
             self.load_placeholder_art()
 
     def load_placeholder_art(self):
-        self.art_image.set_from_icon_name("audio-x-generic", Gtk.IconSize.DIALOG)
+        self.cover_vis.set_art_pixbuf(None)
 
     def apply_css(self):
         theme_path = "/home/sreyas/.config/waybar/current-theme.css"
@@ -900,19 +1061,22 @@ class MediaPopup(Gtk.Window):
         #media-card {{
             background-color: alpha(@bg-color, 0.96);
             border: 1.5px solid alpha(@accent-purple, 0.85);
-            border-radius: 14px;
-            padding: 12px 14px;
+            border-radius: 18px;
+            padding: 14px 18px;
         }}
 
-        #art-frame {{
-            border-radius: 10px;
-            border: 1px solid alpha(@border-color, 0.5);
-            background-color: alpha(@bg-color, 0.6);
-            padding: 2px;
+        #app-badge {{
+            font-size: 11px;
+            font-weight: 700;
+            color: @accent-purple;
+            background-color: alpha(@accent-purple, 0.16);
+            border: 1px solid alpha(@accent-purple, 0.30);
+            border-radius: 9999px;
+            padding: 2px 10px;
         }}
 
         #media-title {{
-            font-size: 13.5px;
+            font-size: 14.5px;
             font-weight: 800;
             color: @fg-color;
         }}
@@ -934,60 +1098,80 @@ class MediaPopup(Gtk.Window):
             color: @comment-color;
         }}
 
+        button {{
+            background-image: none;
+            outline: none;
+            box-shadow: none;
+        }}
+
         #btn-close {{
+            background-image: none;
             color: @comment-color;
             padding: 2px 6px;
-            font-size: 11px;
+            font-size: 12px;
             border: none;
-            background: transparent;
-            border-radius: 6px;
+            background-color: transparent;
+            border-radius: 9999px;
+            min-width: 24px;
+            min-height: 24px;
         }}
 
         #btn-close:hover {{
             color: @fg-color;
-            background-color: alpha(@accent-red, 0.7);
+            background-color: alpha(@accent-red, 0.55);
         }}
 
-        /* Playback Control Buttons with smooth animations */
-        #media-ctrl-btn {{
+        /* Material 3 UI Buttons */
+        .m3-tonal-btn {{
+            background-image: none;
+            border-radius: 9999px;
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0;
+            margin: 0;
+            background-color: alpha(@accent-purple, 0.20);
             color: @accent-purple;
-            background-color: alpha(@accent-purple, 0.15);
-            border: 1px solid alpha(@accent-purple, 0.3);
-            font-size: 13px;
+            border: 1px solid alpha(@accent-purple, 0.35);
+            font-size: 16px;
             font-weight: bold;
-            padding: 4px 12px;
-            border-radius: 8px;
         }}
 
-        #media-ctrl-btn:hover {{
-            background-color: alpha(@accent-purple, 0.35);
+        .m3-tonal-btn:hover {{
+            background-image: none;
+            background-color: alpha(@accent-purple, 0.38);
             color: @fg-color;
+            border-color: alpha(@accent-purple, 0.65);
         }}
 
-        #media-play-btn {{
-            color: @bg-color;
+        .m3-tonal-btn:active {{
+            background-image: none;
+            background-color: alpha(@accent-purple, 0.55);
+        }}
+
+        #m3-btn-play {{
+            background-image: none;
+            border-radius: 9999px;
+            min-width: 48px;
+            min-height: 48px;
+            padding: 0;
+            margin: 0;
             background-color: @accent-purple;
-            border: 1px solid @accent-purple;
-            font-size: 14px;
+            color: @bg-color;
+            border: none;
+            font-size: 20px;
             font-weight: bold;
-            padding: 4px 16px;
-            border-radius: 8px;
+            box-shadow: 0 4px 14px alpha(@accent-purple, 0.55);
         }}
 
-        #media-play-btn:hover {{
-            background-color: alpha(@accent-purple, 0.85);
+        #m3-btn-play:hover {{
+            background-image: none;
+            background-color: alpha(@accent-purple, 0.88);
+            box-shadow: 0 6px 18px alpha(@accent-purple, 0.75);
         }}
 
-        #bongo-frame {{
-            background-color: alpha(@bg-color, 0.45);
-            border: 1px solid alpha(@border-color, 0.35);
-            border-radius: 12px;
-            padding: 2px 4px;
-        }}
-
-        #bongo-frame:hover {{
-            border-color: alpha(@accent-purple, 0.55);
-            background-color: alpha(@bg-color, 0.65);
+        #m3-btn-play:active {{
+            background-image: none;
+            background-color: alpha(@accent-purple, 0.72);
         }}
         """
         css_provider.load_from_data(css.encode('utf-8'))
