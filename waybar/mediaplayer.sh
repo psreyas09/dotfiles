@@ -1,17 +1,30 @@
 #!/bin/bash
 
+trap ":" USR2
+
 # Animated Equalizer visualizer frames for Waybar
 EQ_FRAMES=(" ▃▅▇" "▃▅▇▅" "▅▇▅▃" "▇▅▃ " "▅▃ ▃" "▃ ▃▅")
 frame_idx=0
 num_frames=${#EQ_FRAMES[@]}
 
 while true; do
-    if playerctl status > /dev/null 2>&1; then
-        status=$(playerctl status 2>/dev/null)
-        title=$(playerctl metadata title 2>/dev/null)
-        artist=$(playerctl metadata artist 2>/dev/null)
-        album=$(playerctl metadata album 2>/dev/null)
-        player=$(playerctl metadata --format '{{playerName}}' 2>/dev/null)
+    ACTIVE_PLAYER=""
+    if [ -f /tmp/waybar_active_player ]; then
+        SAVED=$(cat /tmp/waybar_active_player 2>/dev/null)
+        if [ -n "$SAVED" ] && playerctl -l 2>/dev/null | grep -qx "$SAVED"; then
+            ACTIVE_PLAYER="$SAVED"
+        fi
+    fi
+
+    PLAYER_ARG=""
+    [ -n "$ACTIVE_PLAYER" ] && PLAYER_ARG="-p $ACTIVE_PLAYER"
+
+    if playerctl $PLAYER_ARG status > /dev/null 2>&1; then
+        status=$(playerctl $PLAYER_ARG status 2>/dev/null)
+        title=$(playerctl $PLAYER_ARG metadata title 2>/dev/null)
+        artist=$(playerctl $PLAYER_ARG metadata artist 2>/dev/null)
+        album=$(playerctl $PLAYER_ARG metadata album 2>/dev/null)
+        player=$(playerctl $PLAYER_ARG metadata --format '{{playerName}}' 2>/dev/null)
 
         [ -z "$title" ] && title="Unknown Track"
 

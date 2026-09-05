@@ -192,19 +192,19 @@
 
     "custom/prev": {
         "format": "󰒮", 
-        "on-click": "playerctl previous",
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh previous",
         "tooltip": false
     },
 
     "custom/playpause": {
         "format": "󰐎",
-        "on-click": "playerctl play-pause",
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh play-pause",
         "tooltip": false
     },
 
     "custom/next": {
         "format": "󰒭",
-        "on-click": "playerctl next",
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh next",
         "tooltip": false
     }
 }

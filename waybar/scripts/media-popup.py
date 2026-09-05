@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import subprocess
 import time
 import math
 import cairo
@@ -638,23 +639,53 @@ class MediaPopup(Gtk.Window):
         self.is_closing = False
         self.add_tick_callback(self.on_animate_in)
 
-        # Playerctl setup
+        # UI Build
+        self.setup_ui()
+        self.apply_css()
+
+        # Multi-Player Management setup
+        self.players = {}
+        self.player_order = []
+        self.current_instance = None
+        self.player = None
+        self.player_popover = None
+        self.is_seeking = False
+        self.last_art_url = None
+        self.initialized = False
+
+        # Check for saved active player
+        saved_player = None
+        if os.path.exists("/tmp/waybar_active_player"):
+            try:
+                with open("/tmp/waybar_active_player", "r") as f:
+                    saved_player = f.read().strip()
+            except Exception:
+                pass
+
         self.manager = Playerctl.PlayerManager()
         self.manager.connect("name-appeared", self.on_player_appeared)
         self.manager.connect("player-vanished", self.on_player_vanished)
 
-        self.player = None
-        self.is_seeking = False
-        self.last_art_url = ""
-
-        # Find active player
+        # Populate all currently available players
         for name in self.manager.props.player_names:
-            self.setup_player(name)
-            break
+            self.add_player(name)
 
-        # UI Build
-        self.setup_ui()
-        self.apply_css()
+        if saved_player and saved_player in self.players:
+            self.select_player_by_instance(saved_player)
+        elif self.player_order:
+            # Prefer playing player if available
+            chosen = self.player_order[0]
+            for inst in self.player_order:
+                p = self.players[inst]
+                try:
+                    if p.get_property("playback-status") == Playerctl.PlaybackStatus.PLAYING:
+                        chosen = inst
+                        break
+                except Exception:
+                    pass
+            self.select_player_by_instance(chosen)
+
+        self.initialized = True
         self.update_all()
 
         # Update timer for seekbar & time (every 500ms)
@@ -714,34 +745,208 @@ class MediaPopup(Gtk.Window):
             return True
         return False
 
-    def setup_player(self, name):
+    def get_player_instance(self, player):
+        if not player:
+            return ""
+        return getattr(player.props, "player_instance", None) or getattr(player.props, "player_name", "") or ""
+
+    def add_player(self, name_obj):
         try:
-            self.player = Playerctl.Player.new_from_name(name)
-            self.player.connect("metadata", self.on_metadata_changed)
-            self.player.connect("playback-status", self.on_status_changed)
-            self.player.connect("seeked", self.on_seeked)
-            self.manager.manage_player(self.player)
+            player = Playerctl.Player.new_from_name(name_obj)
+            inst = getattr(name_obj, "instance", None) or self.get_player_instance(player)
+            if inst in self.players:
+                return
+            player.connect("metadata", self.on_metadata_changed)
+            player.connect("playback-status", self.on_status_changed)
+            player.connect("seeked", self.on_seeked)
+            self.manager.manage_player(player)
+            self.players[inst] = player
+            if inst not in self.player_order:
+                self.player_order.append(inst)
+
+            if self.initialized:
+                if not self.player:
+                    self.select_player_by_instance(inst)
+                else:
+                    self.update_switcher_ui()
         except Exception:
-            self.player = None
+            pass
 
     def on_player_appeared(self, manager, name):
-        if not self.player:
-            self.setup_player(name)
-            self.update_all()
+        self.add_player(name)
 
     def on_player_vanished(self, manager, player):
-        if self.player and self.player.props.player_name == player.props.player_name:
-            self.player = None
-            self.update_all()
+        inst = self.get_player_instance(player)
+        if inst in self.players:
+            del self.players[inst]
+        if inst in self.player_order:
+            self.player_order.remove(inst)
+        if self.current_instance == inst:
+            if self.player_order:
+                self.select_player_by_instance(self.player_order[0])
+            else:
+                self.player = None
+                self.current_instance = None
+                self.update_all()
+        else:
+            self.update_switcher_ui()
+
+    def select_player_by_instance(self, instance, auto_resume=False):
+        if instance not in self.players:
+            return
+        self.current_instance = instance
+        self.player = self.players[instance]
+        self.last_art_url = None
+        self.save_active_player(instance)
+        if auto_resume:
+            try:
+                self.player.play()
+            except Exception:
+                try:
+                    self.player.play_pause()
+                except Exception:
+                    pass
+        self.update_all()
+
+    def save_active_player(self, instance):
+        try:
+            with open("/tmp/waybar_active_player", "w") as f:
+                f.write(instance)
+            subprocess.run(["pkill", "-USR2", "-f", "mediaplayer.sh"], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+    def on_prev_player_clicked(self, widget):
+        if not self.player_order:
+            return
+        try:
+            idx = self.player_order.index(self.current_instance)
+            new_idx = (idx - 1) % len(self.player_order)
+            self.select_player_by_instance(self.player_order[new_idx])
+        except ValueError:
+            if self.player_order:
+                self.select_player_by_instance(self.player_order[0])
+
+    def on_next_player_clicked(self, widget):
+        if not self.player_order:
+            return
+        try:
+            idx = self.player_order.index(self.current_instance)
+            new_idx = (idx + 1) % len(self.player_order)
+            self.select_player_by_instance(self.player_order[new_idx])
+        except ValueError:
+            if self.player_order:
+                self.select_player_by_instance(self.player_order[0])
+
+    def on_player_pill_clicked(self, widget):
+        if not self.player_order:
+            return
+        if hasattr(self, "player_popover") and self.player_popover:
+            self.player_popover.popdown()
+            self.player_popover = None
+            return
+
+        self.player_popover = Gtk.Popover.new(widget)
+        self.player_popover.set_position(Gtk.PositionType.BOTTOM)
+        self.player_popover.set_name("player-switcher-popover")
+        self.player_popover.connect("closed", self.on_popover_closed)
+
+        pop_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        pop_box.set_margin_start(6)
+        pop_box.set_margin_end(6)
+        pop_box.set_margin_top(6)
+        pop_box.set_margin_bottom(6)
+
+        pop_title = Gtk.Label(label="SELECT MEDIA PLAYER")
+        pop_title.set_name("popover-header")
+        pop_title.set_xalign(0)
+        pop_box.pack_start(pop_title, False, False, 2)
+
+        for inst in self.player_order:
+            p = self.players.get(inst)
+            if not p:
+                continue
+            icon, name = self.get_player_info(p)
+            status_enum = p.get_property("playback-status")
+            is_play = (status_enum == Playerctl.PlaybackStatus.PLAYING)
+            status_icon = "󰐊" if is_play else "󰏤"
+            track = p.get_title() or "No Track"
+            if len(track) > 24:
+                track = track[:23] + "…"
+            is_active = (inst == self.current_instance)
+
+            item_btn = Gtk.Button()
+            item_btn.get_style_context().add_class("popover-player-item")
+            if is_active:
+                item_btn.get_style_context().add_class("popover-player-item-active")
+
+            item_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            lbl_icon = Gtk.Label(label=icon)
+            lbl_icon.get_style_context().add_class("popover-player-icon")
+            item_box.pack_start(lbl_icon, False, False, 0)
+
+            details_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            lbl_name = Gtk.Label(label=name)
+            lbl_name.set_name("popover-item-name")
+            lbl_name.set_xalign(0)
+            details_box.pack_start(lbl_name, False, False, 0)
+
+            lbl_track = Gtk.Label(label=f"{status_icon} {track}")
+            lbl_track.set_name("popover-item-track")
+            lbl_track.set_xalign(0)
+            details_box.pack_start(lbl_track, False, False, 0)
+
+            item_box.pack_start(details_box, True, True, 0)
+
+            if is_active:
+                lbl_active = Gtk.Label(label="✓ Active")
+                lbl_active.set_name("popover-active-badge")
+                item_box.pack_end(lbl_active, False, False, 0)
+            else:
+                btn_play_switch = Gtk.Button(label="󰐊 Resume")
+                btn_play_switch.set_name("popover-resume-btn")
+                btn_play_switch.connect("clicked", lambda b, i=inst, pl=p: self.on_switch_and_play(i, pl))
+                item_box.pack_end(btn_play_switch, False, False, 0)
+
+            item_btn.add(item_box)
+            item_btn.connect("clicked", lambda b, i=inst: self.on_select_player_from_popover(i))
+            pop_box.pack_start(item_btn, False, False, 0)
+
+        self.player_popover.add(pop_box)
+        self.player_popover.show_all()
+        self.player_popover.popup()
+
+    def on_select_player_from_popover(self, instance):
+        if hasattr(self, "player_popover") and self.player_popover:
+            self.player_popover.popdown()
+        self.select_player_by_instance(instance)
+
+    def on_switch_and_play(self, instance, player):
+        if hasattr(self, "player_popover") and self.player_popover:
+            self.player_popover.popdown()
+        self.select_player_by_instance(instance, auto_resume=True)
+
+    def on_popover_closed(self, popover):
+        self.player_popover = None
 
     def on_metadata_changed(self, player, metadata):
-        GLib.idle_add(self.update_all)
+        inst = self.get_player_instance(player)
+        if inst == self.current_instance:
+            GLib.idle_add(self.update_all)
+        else:
+            GLib.idle_add(self.update_switcher_ui)
 
     def on_status_changed(self, player, status):
-        GLib.idle_add(self.update_play_icon)
+        inst = self.get_player_instance(player)
+        if inst == self.current_instance:
+            GLib.idle_add(self.update_play_icon)
+        else:
+            GLib.idle_add(self.update_switcher_ui)
 
     def on_seeked(self, player, position):
-        GLib.idle_add(self.update_seekbar)
+        inst = self.get_player_instance(player)
+        if inst == self.current_instance:
+            GLib.idle_add(self.update_seekbar)
 
     def setup_ui(self):
         # Main Container
@@ -759,14 +964,52 @@ class MediaPopup(Gtk.Window):
         middle_box.set_valign(Gtk.Align.CENTER)
         self.card.pack_start(middle_box, True, True, 0)
 
-        # Top Header Row: App Badge pill & Close button
+        # Top Header Row: Player Switcher & Close button
         header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         middle_box.pack_start(header_row, False, False, 0)
 
-        self.app_badge = Gtk.Label(label="󰝚 Standby")
-        self.app_badge.set_name("app-badge")
-        self.app_badge.set_xalign(0)
-        header_row.pack_start(self.app_badge, False, False, 0)
+        # Player Switcher Container
+        self.switcher_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.switcher_box.set_name("player-switcher-box")
+        header_row.pack_start(self.switcher_box, False, False, 0)
+
+        # Previous Player Button (Step left)
+        self.btn_player_prev = Gtk.Button(label="")
+        self.btn_player_prev.set_name("btn-player-step")
+        self.btn_player_prev.get_style_context().add_class("player-step-btn")
+        self.btn_player_prev.connect("clicked", self.on_prev_player_clicked)
+        self.btn_player_prev.set_tooltip_text("Previous player")
+        self.switcher_box.pack_start(self.btn_player_prev, False, False, 0)
+
+        # Active Player Pill Button
+        self.btn_player_pill = Gtk.Button()
+        self.btn_player_pill.set_name("player-badge-btn")
+        self.btn_player_pill.connect("clicked", self.on_player_pill_clicked)
+
+        pill_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+        self.app_badge_label = Gtk.Label(label="󰝚 Standby")
+        self.app_badge_label.set_name("app-badge-text")
+
+        self.app_badge_arrow = Gtk.Label(label="▾")
+        self.app_badge_arrow.set_name("app-badge-arrow")
+
+        pill_content.pack_start(self.app_badge_label, False, False, 0)
+        pill_content.pack_start(self.app_badge_arrow, False, False, 0)
+        self.btn_player_pill.add(pill_content)
+        self.switcher_box.pack_start(self.btn_player_pill, False, False, 0)
+
+        # Next Player Button (Step right)
+        self.btn_player_next = Gtk.Button(label="")
+        self.btn_player_next.set_name("btn-player-step")
+        self.btn_player_next.get_style_context().add_class("player-step-btn")
+        self.btn_player_next.connect("clicked", self.on_next_player_clicked)
+        self.btn_player_next.set_tooltip_text("Next player")
+        self.switcher_box.pack_start(self.btn_player_next, False, False, 0)
+
+        # Player Counter Label (e.g. "1/2")
+        self.player_counter_label = Gtk.Label(label="")
+        self.player_counter_label.set_name("player-counter-label")
+        self.switcher_box.pack_start(self.player_counter_label, False, False, 2)
 
         btn_close = Gtk.Button(label="󰅖")
         btn_close.set_name("btn-close")
@@ -879,34 +1122,90 @@ class MediaPopup(Gtk.Window):
         s = secs % 60
         return f"{m}:{s:02d}"
 
-    def get_player_display(self):
+    def get_player_info(self, player):
+        if not player:
+            return "󰝚", "Standby"
+        pname = (getattr(player.props, "player_name", "") or "").lower()
+        pinst = (getattr(player.props, "player_instance", "") or "").lower()
+        url = (player.print_metadata_prop("xesam:url") or "").lower()
+        art = (player.print_metadata_prop("mpris:artUrl") or "").lower()
+
+        is_zen = "zen" in pinst or "zen" in art
+        is_ytm = "music.youtube.com" in url or "music.youtube" in pinst
+        is_yt = "youtube.com" in url
+
+        if is_zen and is_ytm:
+            return "󰗃", "YT Music (Zen)"
+        elif is_ytm:
+            return "󰗃", "YouTube Music"
+        elif is_zen and is_yt:
+            return "󰗃", "YouTube (Zen)"
+        elif is_zen:
+            return "󰈹", "Zen Browser"
+        elif "tauon" in pname:
+            return "󰝚", "Tauon Music"
+        elif "spotify" in pname:
+            return "󰓇", "Spotify"
+        elif "firefox" in pname:
+            return "󰈹", "Firefox"
+        elif "chromium" in pname:
+            return "󰊯", "Chromium"
+        elif "chrome" in pname:
+            return "󰊯", "Google Chrome"
+        elif "brave" in pname:
+            return "󰊯", "Brave"
+        elif "vlc" in pname:
+            return "󰕼", "VLC"
+        elif "mpv" in pname:
+            return "󰐹", "MPV"
+        elif "strawberry" in pname:
+            return "󰝚", "Strawberry"
+        elif "apple_music" in pname:
+            return "󰝚", "Apple Music"
+        elif "cider" in pname:
+            return "󰝚", "Cider"
+        elif "rhythmbox" in pname:
+            return "󰝚", "Rhythmbox"
+        elif "audacious" in pname:
+            return "󰝚", "Audacious"
+        else:
+            clean = player.props.player_name.split('.')[0].capitalize()
+            return "󰝚", clean
+
+    def update_switcher_ui(self):
         if not self.player:
-            return "󰝚 Standby"
-        name = (getattr(self.player.props, "player_name", "") or "").lower()
-        mapping = {
-            "spotify": ("󰓇", "Spotify"),
-            "strawberry": ("󰝚", "Strawberry"),
-            "firefox": ("󰈹", "Firefox"),
-            "chromium": ("󰊯", "Chromium"),
-            "chrome": ("󰊯", "Google Chrome"),
-            "brave": ("󰊯", "Brave"),
-            "vlc": ("󰕼", "VLC"),
-            "mpv": ("󰐹", "MPV"),
-            "apple_music": ("󰝚", "Apple Music"),
-            "youtube": ("󰗃", "YouTube"),
-            "cider": ("󰝚", "Cider"),
-            "rhythmbox": ("󰝚", "Rhythmbox"),
-            "audacious": ("󰝚", "Audacious"),
-        }
-        for k, (icon, label) in mapping.items():
-            if k in name:
-                return f"{icon} {label}"
-        clean_name = self.player.props.player_name.split('.')[0].capitalize()
-        return f"󰝚 {clean_name}"
+            self.app_badge_label.set_text("󰝚 Standby")
+            self.app_badge_arrow.set_visible(False)
+            self.btn_player_prev.set_visible(False)
+            self.btn_player_next.set_visible(False)
+            self.player_counter_label.set_text("")
+            return
+
+        icon, name = self.get_player_info(self.player)
+        self.app_badge_label.set_text(f"{icon} {name}")
+
+        count = len(self.player_order)
+        if count > 1:
+            self.app_badge_arrow.set_visible(True)
+            self.btn_player_prev.set_visible(True)
+            self.btn_player_next.set_visible(True)
+            try:
+                curr_idx = self.player_order.index(self.current_instance) + 1
+            except ValueError:
+                curr_idx = 1
+            self.player_counter_label.set_text(f"{curr_idx}/{count}")
+            self.player_counter_label.set_visible(True)
+        else:
+            self.app_badge_arrow.set_visible(False)
+            self.btn_player_prev.set_visible(False)
+            self.btn_player_next.set_visible(False)
+            self.player_counter_label.set_text("")
+            self.player_counter_label.set_visible(False)
 
     def update_all(self):
+        self.update_switcher_ui()
+
         if not self.player:
-            self.app_badge.set_text("󰝚 Standby")
             self.title_label.set_text("No Media Playing")
             self.artist_label.set_text("")
             self.album_label.set_text("")
@@ -921,9 +1220,6 @@ class MediaPopup(Gtk.Window):
             if hasattr(self, "cover_vis"):
                 self.cover_vis.set_playing(False)
             return
-
-        # App badge
-        self.app_badge.set_text(self.get_player_display())
 
         # Title
         title = self.player.get_title() or "Unknown Title"
@@ -1064,14 +1360,135 @@ class MediaPopup(Gtk.Window):
             padding: 14px 18px;
         }}
 
-        #app-badge {{
+        /* Player Switcher Pill */
+        #player-switcher-box {{
+            background-color: alpha(@accent-purple, 0.12);
+            border: 1px solid alpha(@accent-purple, 0.28);
+            border-radius: 9999px;
+            padding: 1px 3px;
+        }}
+
+        #player-badge-btn {{
+            background-color: transparent;
+            border: none;
+            border-radius: 9999px;
+            padding: 2px 7px;
+            margin: 0;
+        }}
+
+        #player-badge-btn:hover {{
+            background-color: alpha(@accent-purple, 0.22);
+        }}
+
+        #app-badge-text {{
             font-size: 11px;
             font-weight: 700;
             color: @accent-purple;
-            background-color: alpha(@accent-purple, 0.16);
-            border: 1px solid alpha(@accent-purple, 0.30);
+        }}
+
+        #app-badge-arrow {{
+            font-size: 9.5px;
+            color: alpha(@accent-purple, 0.8);
+        }}
+
+        .player-step-btn {{
+            background-color: transparent;
+            border: none;
             border-radius: 9999px;
-            padding: 2px 10px;
+            color: @accent-purple;
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 20px;
+            min-height: 20px;
+            padding: 1px 3px;
+        }}
+
+        .player-step-btn:hover {{
+            background-color: alpha(@accent-purple, 0.3);
+            color: @fg-color;
+        }}
+
+        #player-counter-label {{
+            font-size: 9.5px;
+            font-family: "JetBrains Mono", monospace;
+            font-weight: 600;
+            color: @comment-color;
+            padding: 0 4px 0 2px;
+        }}
+
+        /* Player Switcher Dropdown Popover */
+        popover.background,
+        popover contents {{
+            background-color: alpha(@bg-color, 0.98);
+            border: 1.5px solid alpha(@accent-purple, 0.7);
+            border-radius: 14px;
+            padding: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        }}
+
+        #popover-header {{
+            font-size: 9.5px;
+            font-weight: 800;
+            color: @comment-color;
+            letter-spacing: 1px;
+            padding: 2px 6px 4px 6px;
+        }}
+
+        .popover-player-item {{
+            background-color: transparent;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 6px 10px;
+            margin: 2px 0;
+        }}
+
+        .popover-player-item:hover {{
+            background-color: alpha(@accent-purple, 0.15);
+            border-color: alpha(@accent-purple, 0.35);
+        }}
+
+        .popover-player-item-active {{
+            background-color: alpha(@accent-purple, 0.22);
+            border-color: alpha(@accent-purple, 0.5);
+        }}
+
+        .popover-player-icon {{
+            font-size: 16px;
+            color: @accent-purple;
+        }}
+
+        #popover-item-name {{
+            font-size: 12px;
+            font-weight: 700;
+            color: @fg-color;
+        }}
+
+        #popover-item-track {{
+            font-size: 10.5px;
+            color: @comment-color;
+        }}
+
+        #popover-active-badge {{
+            font-size: 10px;
+            font-weight: 700;
+            color: @accent-purple;
+            background-color: alpha(@accent-purple, 0.25);
+            border-radius: 6px;
+            padding: 2px 6px;
+        }}
+
+        #popover-resume-btn {{
+            font-size: 10px;
+            font-weight: 700;
+            color: @bg-color;
+            background-color: @accent-purple;
+            border-radius: 6px;
+            padding: 2px 8px;
+            border: none;
+        }}
+
+        #popover-resume-btn:hover {{
+            background-color: alpha(@accent-purple, 0.85);
         }}
 
         #media-title {{
