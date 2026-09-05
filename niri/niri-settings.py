@@ -583,6 +583,31 @@ def set_howdy_status(enable: bool, callback=None):
         if callback:
             GLib.idle_add(callback, success, final_state)
 
+
+AUTOLOCK_CONF_PATH = os.path.expanduser("~/.config/niri/autolock.json")
+DOTFILE_AUTOLOCK_PATH = os.path.expanduser("~/dotfile/niri/autolock.json")
+
+def get_autolock_config():
+    if os.path.exists(AUTOLOCK_CONF_PATH):
+        try:
+            with open(AUTOLOCK_CONF_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    is_running = (subprocess.run(["pgrep", "-x", "swayidle"], stdout=subprocess.DEVNULL).returncode == 0)
+    return {"enabled": is_running, "timeout": 300}
+
+def set_autolock_config(enabled, timeout=300):
+    data = {"enabled": bool(enabled), "timeout": int(timeout)}
+    for p in [AUTOLOCK_CONF_PATH, DOTFILE_AUTOLOCK_PATH]:
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
+
 class AvatarCropDialog(Gtk.Dialog):
     """Interactive Crop, Pan, Zoom, and Rotation Dialog for Profile Pictures"""
     def __init__(self, parent, image_path):
@@ -2558,9 +2583,16 @@ class NiriSettingsApp(Gtk.Window):
         lock_card = SettingsCard()
         vbox.pack_start(lock_card, False, False, 0)
 
+        autolock_cfg = get_autolock_config()
         auto_lock_switch = Gtk.Switch()
-        auto_lock_switch.set_active(True)
-        auto_lock_switch.connect("state-set", lambda _, state: async_cmd("bash ~/.config/niri/toggle-autolock.sh"))
+        auto_lock_switch.set_active(autolock_cfg.get("enabled", True))
+        def on_autolock_toggled(sw, state):
+            set_autolock_config(state)
+            target = "on" if state else "off"
+            async_cmd(f"bash ~/.config/niri/toggle-autolock.sh {target}")
+            return False
+
+        auto_lock_switch.connect("state-set", on_autolock_toggled)
 
         lock_card.add_row(create_setting_row(
             "system-lock-screen",
@@ -2816,6 +2848,7 @@ class NiriSettingsApp(Gtk.Window):
             ("Mod + Shift + D", "Toggle Bottom macOS Dock Auto-Hide"),
             ("Mod + Shift + Slash", "Niri Keybindings Hotkey Cheat Sheet"),
             ("Mod + L", "Lock Screen (Swaylock Blurred Image)"),
+            ("Mod + Shift + L", "Toggle Automatic Screen Lock (Swayidle)"),
             ("Mod + Escape", "Open Power / Logout Menu (Wlogout)"),
             ("Mod + Q", "Close Focused Window"),
             ("Mod + Left / Right", "Navigate Columns Left / Right"),

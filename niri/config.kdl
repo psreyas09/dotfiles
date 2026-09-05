@@ -260,7 +260,7 @@ spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/dashboa
 
 //spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"
 
-spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5" "before-sleep" "swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
+spawn-at-startup "/home/sreyas/.config/niri/toggle-autolock.sh" "--startup"
 
 spawn-at-startup "/home/sreyas/.config/niri/wallpaper-picker.sh" "--restore"
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/macos-dock.py"
