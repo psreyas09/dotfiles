@@ -481,7 +481,6 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         self.set_size_request(135, 110)
         self.set_valign(Gtk.Align.CENTER)
         self.set_can_focus(False)
-        self.set_tooltip_text("Bongo Cat ~ Click to drumroll!")
 
         self.phase = 0.0
         self.is_playing = False

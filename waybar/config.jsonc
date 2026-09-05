@@ -187,12 +187,13 @@
         "exec": "$HOME/.config/waybar/mediaplayer.sh",
         "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/media-popup.py",
         "escape": false,
-        "tooltip": true
+        "tooltip": false
     },
 
     "custom/prev": {
         "format": "󰒮", 
-        "on-click": "playerctl previous"
+        "on-click": "playerctl previous",
+        "tooltip": false
     },
 
     "custom/playpause": {
@@ -203,6 +204,7 @@
 
     "custom/next": {
         "format": "󰒭",
-        "on-click": "playerctl next"
+        "on-click": "playerctl next",
+        "tooltip": false
     }
 }

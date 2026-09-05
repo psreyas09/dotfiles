@@ -41,11 +41,11 @@ while true; do
 
         jq -n --arg text "$display_text" \
               --arg alt "$status" \
-              --arg tooltip "$tooltip" \
+              --arg tooltip "" \
               --arg class "$status" \
               '{$text, $alt, $tooltip, $class}' -c
     else
-        echo '{"text": "<span font_features=\"liga=0,clig=0,dlig=0,calt=0\">No Media</span>", "alt": "Stopped", "tooltip": "No media playing", "class": "stopped"}'
+        echo '{"text": "<span font_features=\"liga=0,clig=0,dlig=0,calt=0\">No Media</span>", "alt": "Stopped", "tooltip": "", "class": "stopped"}'
         sleep_time=2.0
     fi
     sleep "$sleep_time"
