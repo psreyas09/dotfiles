@@ -1446,14 +1446,12 @@ class HoverTriggerWindow(Gtk.Window):
 
         # Centered horizontally, anchored to TOP over Waybar's clock
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.TOP, True)
-        GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.LEFT, True)
-        GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.RIGHT, True)
+        GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.LEFT, False)
+        GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.RIGHT, False)
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.BOTTOM, False)
 
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 0)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, 850)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, 850)
-        self.set_size_request(-1, 34)
+        self.set_size_request(280, 36)
 
         # Fully transparent visual
         screen = self.get_screen()
@@ -1464,6 +1462,7 @@ class HoverTriggerWindow(Gtk.Window):
 
         ev_box = Gtk.EventBox()
         ev_box.set_visible_window(False)
+        ev_box.set_size_request(280, 36)
         ev_box.add_events(
             Gdk.EventMask.ENTER_NOTIFY_MASK
             | Gdk.EventMask.BUTTON_PRESS_MASK
