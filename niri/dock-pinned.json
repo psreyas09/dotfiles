@@ -82,6 +82,16 @@
     ]
   },
   {
+    "name": "Text Editor",
+    "icon": [
+      "org.gnome.TextEditor"
+    ],
+    "cmd": "gnome-text-editor",
+    "app_ids": [
+      "org.gnome.TextEditor"
+    ]
+  },
+  {
     "name": "Settings",
     "icon": [
       "preferences-system",
@@ -92,16 +102,6 @@
     "app_ids": [
       "niri-settings",
       "niri-settings.py"
-    ]
-  },
-  {
-    "name": "Text Editor",
-    "icon": [
-      "org.gnome.TextEditor"
-    ],
-    "cmd": "gnome-text-editor",
-    "app_ids": [
-      "org.gnome.TextEditor"
     ]
   }
 ]
