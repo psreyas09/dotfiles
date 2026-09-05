@@ -8,9 +8,14 @@ import shutil
 import subprocess
 import threading
 
+import math
+import cairo
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
+gi.require_version('GdkPixbuf', '2.0')
+gi.require_version('Pango', '1.0')
+gi.require_version('PangoCairo', '1.0')
+from gi.repository import Gtk, Gdk, GLib, GdkPixbuf, Pango, PangoCairo
 
 GLib.set_prgname("niri-settings")
 GLib.set_application_name("Niri Settings")
@@ -21,6 +26,106 @@ WALLPAPER_DIR = "/home/sreyas/wall"
 CONFIG_KDL_PATH = "/home/sreyas/.config/niri/config.kdl"
 DOTFILE_KDL_PATH = "/home/sreyas/dotfile/niri/config.kdl"
 CURRENT_WALL_CACHE = "/home/sreyas/.cache/current_wallpaper"
+
+def parse_theme_colors():
+    colors = {
+        "accent-purple": (0.44, 0.42, 0.63, 1.0),
+        "fg-color": (0.93, 0.99, 1.0, 1.0),
+        "bg-color": (0.05, 0.05, 0.07, 1.0),
+        "comment-color": (0.61, 0.67, 0.67, 1.0),
+        "accent-color": (0.44, 0.42, 0.63, 1.0),
+    }
+    if os.path.exists(THEME_CSS_PATH):
+        try:
+            with open(THEME_CSS_PATH, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("@define-color"):
+                        parts = line.replace(";", "").split()
+                        if len(parts) >= 3:
+                            name = parts[1]
+                            hex_c = parts[2].lstrip("#")
+                            if len(hex_c) == 6:
+                                r = int(hex_c[0:2], 16) / 255.0
+                                g = int(hex_c[2:4], 16) / 255.0
+                                b = int(hex_c[4:6], 16) / 255.0
+                                colors[name] = (r, g, b, 1.0)
+            if "accent-purple" in colors:
+                colors["accent-color"] = colors["accent-purple"]
+        except Exception:
+            pass
+    return colors
+
+def get_current_avatar_path():
+    paths = [
+        os.path.expanduser("~/.config/waybar/avatar.png"),
+        os.path.expanduser("~/.face"),
+        os.path.expanduser("~/.face.icon"),
+        f"/var/lib/AccountsService/icons/{os.getenv('USER', 'sreyas')}"
+    ]
+    for p in paths:
+        if os.path.exists(p) and os.path.isfile(p):
+            return p
+    return None
+
+def get_avatar_pixbuf(size):
+    path = get_current_avatar_path()
+    if not path:
+        return None
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file(path)
+        pw, ph = pb.get_width(), pb.get_height()
+        if pw <= 0 or ph <= 0:
+            return None
+        scale = max(size / float(pw), size / float(ph))
+        nw = max(1, int(round(pw * scale)))
+        nh = max(1, int(round(ph * scale)))
+        scaled = pb.scale_simple(nw, nh, GdkPixbuf.InterpType.BILINEAR)
+        src_x = max(0, (nw - size) // 2)
+        src_y = max(0, (nh - size) // 2)
+        cropped = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, size, size)
+        scaled.copy_area(src_x, src_y, size, size, cropped, 0, 0)
+        return cropped
+    except Exception:
+        return None
+
+def set_profile_picture(filepath):
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file(filepath)
+        pw, ph = pb.get_width(), pb.get_height()
+        side = min(pw, ph)
+        src_x = (pw - side) // 2
+        src_y = (ph - side) // 2
+        square = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, side, side)
+        pb.copy_area(src_x, src_y, side, side, square, 0, 0)
+
+        final_pb = square.scale_simple(512, 512, GdkPixbuf.InterpType.BILINEAR)
+
+        target_waybar = os.path.expanduser("~/.config/waybar/avatar.png")
+        target_face = os.path.expanduser("~/.face")
+        target_face_icon = os.path.expanduser("~/.face.icon")
+
+        os.makedirs(os.path.dirname(target_waybar), exist_ok=True)
+        final_pb.savev(target_waybar, "png", [], [])
+        final_pb.savev(target_face, "png", [], [])
+        try:
+            final_pb.savev(target_face_icon, "png", [], [])
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"Error setting profile picture: {e}")
+        return False
+
+def remove_profile_picture():
+    for p in [os.path.expanduser("~/.config/waybar/avatar.png"),
+              os.path.expanduser("~/.face"),
+              os.path.expanduser("~/.face.icon")]:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
 
 def run_cmd(cmd):
     try:
@@ -564,6 +669,7 @@ class NiriSettingsApp(Gtk.Window):
         self.page_factories = {
             "display": self.page_display,
             "appearance": self.page_appearance,
+            "users": self.page_users,
             "dock": self.page_dock,
             "mouse": self.page_mouse,
             "keyboard": self.page_keyboard,
@@ -623,6 +729,7 @@ class NiriSettingsApp(Gtk.Window):
     def build_sidebar(self):
         self.add_nav_item("display", "Display & Monitor", "video-display")
         self.add_nav_item("appearance", "Appearance & Themes", "preferences-desktop-theme")
+        self.add_nav_item("users", "User & Profile", "avatar-default")
         self.add_nav_item("dock", "Dock & Top Bar", "user-desktop")
         self.add_nav_item("mouse", "Mouse & Touchpad", "input-mouse")
         self.add_nav_item("keyboard", "Keyboard & Brightness", "input-keyboard")
@@ -1111,6 +1218,185 @@ class NiriSettingsApp(Gtk.Window):
             "Glow outline thickness around currently focused window",
             border_scale
         ))
+
+        return scroll
+
+    # ==========================================
+    # PAGE: USER & PROFILE
+    # ==========================================
+    def page_users(self):
+        scroll, vbox = self.make_page_container("User & Profile", "Manage user profile picture, identity details, and system avatar")
+
+        # 1. Profile Picture Hero Card
+        vbox.pack_start(Gtk.Label(label="USER AVATAR & IDENTITY", xalign=0, name="section-caption"), False, False, 0)
+        avatar_card = SettingsCard()
+        vbox.pack_start(avatar_card, False, False, 0)
+
+        hero_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+        hero_box.set_margin_start(16)
+        hero_box.set_margin_end(16)
+        hero_box.set_margin_top(16)
+        hero_box.set_margin_bottom(16)
+
+        # Avatar Drawing Area (96x96 px circular)
+        avatar_draw = Gtk.DrawingArea()
+        avatar_draw.set_size_request(96, 96)
+
+        def draw_avatar(w, cr):
+            pw = w.get_allocated_width()
+            ph = w.get_allocated_height()
+            if pw <= 0 or ph <= 0:
+                return False
+            cx, cy = pw / 2.0, ph / 2.0
+            r = min(pw, ph) / 2.0 - 2.0
+
+            colors = parse_theme_colors()
+            accent = colors.get("accent-purple", (0.44, 0.42, 0.63, 1.0))
+
+            cr.save()
+            cr.arc(cx, cy, r, 0, 2 * math.pi)
+            cr.clip()
+
+            pixbuf = get_avatar_pixbuf(96)
+            if pixbuf:
+                bw = pixbuf.get_width()
+                bh = pixbuf.get_height()
+                Gdk.cairo_set_source_pixbuf(cr, pixbuf, cx - bw / 2.0, cy - bh / 2.0)
+                cr.paint()
+            else:
+                cr.set_source_rgba(accent[0] * 0.35, accent[1] * 0.35, accent[2] * 0.35, 0.85)
+                cr.paint()
+                layout = w.create_pango_layout("")
+                desc = Pango.FontDescription("Symbols Nerd Font 40")
+                layout.set_font_description(desc)
+                _, logical = layout.get_pixel_extents()
+                cr.set_source_rgba(accent[0], accent[1], accent[2], 0.95)
+                cr.move_to(cx - logical.width / 2.0, cy - logical.height / 2.0)
+                PangoCairo.show_layout(cr, layout)
+
+            cr.restore()
+
+            # Outer ring
+            cr.set_source_rgba(accent[0], accent[1], accent[2], 0.9)
+            cr.set_line_width(2.5)
+            cr.arc(cx, cy, r, 0, 2 * math.pi)
+            cr.stroke()
+            return False
+
+        avatar_draw.connect("draw", draw_avatar)
+        hero_box.pack_start(avatar_draw, False, False, 0)
+
+        # Info Box
+        info_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        info_vbox.set_valign(Gtk.Align.CENTER)
+
+        user_name = os.getenv("USER", "user")
+        hostname = os.uname().nodename
+        u_lbl = Gtk.Label(label=f"@{user_name} • {hostname}")
+        u_lbl.set_name("row-title")
+        u_lbl.set_xalign(0)
+        info_vbox.pack_start(u_lbl, False, False, 0)
+
+        cur_path = get_current_avatar_path()
+        disp_p = cur_path.replace(os.path.expanduser("~"), "~") if cur_path else "Default system icon"
+        path_lbl = Gtk.Label(label=f"Active: {disp_p}")
+        path_lbl.set_name("row-subtitle")
+        path_lbl.set_xalign(0)
+        info_vbox.pack_start(path_lbl, False, False, 0)
+
+        tip_lbl = Gtk.Label(label="PNG, JPG, WEBP, or SVG • Saved to ~/.face and ~/.config/waybar/avatar.png")
+        tip_lbl.set_name("badge-label-muted")
+        tip_lbl.set_xalign(0)
+        info_vbox.pack_start(tip_lbl, False, False, 2)
+
+        hero_box.pack_start(info_vbox, True, True, 0)
+
+        # Buttons Box
+        btn_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        btn_vbox.set_valign(Gtk.Align.CENTER)
+
+        btn_change = Gtk.Button(label="Change Picture...")
+
+        def on_change_clicked(*_):
+            chooser = Gtk.FileChooserNative.new(
+                "Select Profile Picture",
+                self,
+                Gtk.FileChooserAction.OPEN,
+                "_Select",
+                "_Cancel"
+            )
+            filter_img = Gtk.FileFilter()
+            filter_img.set_name("Images (*.png, *.jpg, *.jpeg, *.webp, *.svg)")
+            filter_img.add_mime_type("image/png")
+            filter_img.add_mime_type("image/jpeg")
+            filter_img.add_mime_type("image/webp")
+            filter_img.add_mime_type("image/svg+xml")
+            filter_img.add_pattern("*.png")
+            filter_img.add_pattern("*.jpg")
+            filter_img.add_pattern("*.jpeg")
+            filter_img.add_pattern("*.webp")
+            filter_img.add_pattern("*.svg")
+            chooser.add_filter(filter_img)
+
+            def on_resp(dialog, resp):
+                if resp == Gtk.ResponseType.ACCEPT:
+                    fn = dialog.get_filename()
+                    if fn and os.path.exists(fn):
+                        set_profile_picture(fn)
+                        avatar_draw.queue_draw()
+                        cur = get_current_avatar_path()
+                        if cur:
+                            path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
+                        async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
+                dialog.destroy()
+
+            chooser.connect("response", on_resp)
+            chooser.show()
+
+        btn_change.connect("clicked", on_change_clicked)
+        btn_vbox.pack_start(btn_change, False, False, 0)
+
+        btn_remove = Gtk.Button(label="Remove Picture")
+        def on_remove_clicked(*_):
+            remove_profile_picture()
+            avatar_draw.queue_draw()
+            path_lbl.set_text("Active: Default system icon")
+            async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
+
+        btn_remove.connect("clicked", on_remove_clicked)
+        btn_vbox.pack_start(btn_remove, False, False, 0)
+
+        hero_box.pack_end(btn_vbox, False, False, 0)
+        avatar_card.pack_start(hero_box, False, False, 0)
+
+        # 2. Account Details Card
+        vbox.pack_start(Gtk.Label(label="ACCOUNT DETAILS", xalign=0, name="section-caption"), False, False, 0)
+        account_card = SettingsCard()
+        vbox.pack_start(account_card, False, False, 0)
+
+        real_name = user_name.capitalize()
+        try:
+            import pwd
+            entry = pwd.getpwnam(user_name)
+            gecos = entry.pw_gecos.split(",")[0].strip()
+            if gecos:
+                real_name = gecos
+        except Exception:
+            pass
+
+        account_card.add_row(create_setting_row("avatar-default", "User Account", f"Username: {user_name}", Gtk.Label(label=user_name)))
+        account_card.add_row(create_setting_row("user-info", "Full Name", real_name, Gtk.Label(label=real_name)))
+        account_card.add_row(create_setting_row("dialog-password", "Account Privileges", "Administrative (wheel group member)", Gtk.Label(label="Admin")))
+        account_card.add_row(create_setting_row("folder-home", "Home Directory", os.path.expanduser("~"), Gtk.Label(label=os.path.expanduser("~"))))
+        account_card.add_row(create_setting_row("utilities-terminal", "Login Shell", os.getenv("SHELL", "/bin/bash"), Gtk.Label(label=os.path.basename(os.getenv("SHELL", "bash")))))
+
+        # 3. Synchronization & Display Card
+        vbox.pack_start(Gtk.Label(label="DESKTOP & WAYBAR INTEGRATION", xalign=0, name="section-caption"), False, False, 0)
+        sync_card = SettingsCard()
+        vbox.pack_start(sync_card, False, False, 0)
+
+        sync_card.add_row(create_setting_row("preferences-desktop-theme", "Caelestia Dashboard Header", "Profile avatar renders in the clock dropdown dashboard", Gtk.Label(label="Connected")))
+        sync_card.add_row(create_setting_row("system-lock-screen", "Lock Screen & Display Manager", "Synchronized to ~/.face and ~/.face.icon for Swaylock and SDDM/GDM", Gtk.Label(label="Synchronized")))
 
         return scroll
 
@@ -2433,6 +2719,12 @@ class NiriSettingsApp(Gtk.Window):
 def main():
     app = NiriSettingsApp()
     app.connect("destroy", Gtk.main_quit)
+    if "--page" in sys.argv:
+        try:
+            pid = sys.argv[sys.argv.index("--page") + 1]
+            app.switch_to_page(pid)
+        except Exception:
+            pass
     app.show_all()
     Gtk.main()
 

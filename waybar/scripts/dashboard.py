@@ -203,9 +203,6 @@ class DashboardWindow(Gtk.Window):
         elif event.keyval in (Gdk.KEY_3, Gdk.KEY_numbersign):
             self.switch_tab(2)
             return True
-        elif event.keyval in (Gdk.KEY_4, Gdk.KEY_dollar):
-            self.switch_tab(3)
-            return True
         return False
 
     def on_pin_clicked(self, *_):
@@ -238,6 +235,7 @@ class DashboardWindow(Gtk.Window):
             return
 
         self.is_open = True
+        self.reload_avatar_images()
         self.refresh_all_data()
 
         if not self.get_visible() or self.anim_progress <= 0.0:
@@ -327,12 +325,10 @@ class DashboardWindow(Gtk.Window):
         self.tab_btn_dash = self.create_tab_button("󰕮  Dashboard", 0)
         self.tab_btn_perf = self.create_tab_button("󰓅  Performance", 1)
         self.tab_btn_work = self.create_tab_button("󱂬  Workspaces", 2)
-        self.tab_btn_sett = self.create_tab_button("󰒓  Settings", 3)
 
         tabs_box.pack_start(self.tab_btn_dash, False, False, 0)
         tabs_box.pack_start(self.tab_btn_perf, False, False, 0)
         tabs_box.pack_start(self.tab_btn_work, False, False, 0)
-        tabs_box.pack_start(self.tab_btn_sett, False, False, 0)
 
         # Actions box (Pin and Close)
         actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -370,10 +366,6 @@ class DashboardWindow(Gtk.Window):
         self.view_workspaces = self.build_workspaces_tab()
         self.stack.add_named(self.view_workspaces, "work")
 
-        # 4. Settings Tab View
-        self.view_settings = self.build_settings_tab()
-        self.stack.add_named(self.view_settings, "sett")
-
         self.switch_tab(0)
 
     def create_tab_button(self, label_text, tab_idx):
@@ -384,15 +376,15 @@ class DashboardWindow(Gtk.Window):
 
     def switch_tab(self, idx):
         self.current_tab = idx
-        tabs = [self.tab_btn_dash, self.tab_btn_perf, self.tab_btn_work, self.tab_btn_sett]
+        tabs = [self.tab_btn_dash, self.tab_btn_perf, self.tab_btn_work]
         for i, b in enumerate(tabs):
             if i == idx:
                 b.get_style_context().add_class("dash-tab-active")
             else:
                 b.get_style_context().remove_class("dash-tab-active")
 
-        names = ["dash", "perf", "work", "sett"]
-        views = [self.view_dashboard, self.view_performance, self.view_workspaces, self.view_settings]
+        names = ["dash", "perf", "work"]
+        views = [self.view_dashboard, self.view_performance, self.view_workspaces]
         for i, v in enumerate(views):
             if i == idx:
                 v.show_all()
@@ -416,11 +408,11 @@ class DashboardWindow(Gtk.Window):
         user_card.set_name("dash-user-card")
         row1.pack_start(user_card, True, True, 0)
 
-        # Avatar (Clickable button to open Settings & display profile picture)
+        # Avatar (Clickable button to open Settings app & display profile picture)
         self.avatar_btn_dash = Gtk.Button()
         self.avatar_btn_dash.set_name("dash-avatar-btn")
         self.avatar_btn_dash.set_tooltip_text("Profile Picture • Click to open Settings")
-        self.avatar_btn_dash.connect("clicked", lambda *_: self.switch_tab(3))
+        self.avatar_btn_dash.connect("clicked", lambda *_: subprocess.Popen(["/usr/bin/python3", "/home/sreyas/.config/niri/niri-settings.py", "--page", "users"]))
 
         self.avatar_draw_dash = Gtk.DrawingArea()
         self.avatar_draw_dash.set_size_request(60, 60)
@@ -942,18 +934,8 @@ class DashboardWindow(Gtk.Window):
 
     def reload_avatar_images(self):
         self.avatar_pixbuf_60 = self.get_avatar_pixbuf(60)
-        self.avatar_pixbuf_90 = self.get_avatar_pixbuf(90)
         if hasattr(self, "avatar_draw_dash") and self.avatar_draw_dash:
             self.avatar_draw_dash.queue_draw()
-        if hasattr(self, "avatar_draw_settings") and self.avatar_draw_settings:
-            self.avatar_draw_settings.queue_draw()
-        if hasattr(self, "lbl_avatar_source") and self.lbl_avatar_source:
-            cur = self.get_current_avatar_path()
-            if cur:
-                disp = cur.replace(os.path.expanduser("~"), "~")
-                self.lbl_avatar_source.set_text(f"Active Picture: {disp}")
-            else:
-                self.lbl_avatar_source.set_text("Active Picture: Default user icon")
 
     def draw_avatar_surface(self, widget, cr, pixbuf, size):
         w = widget.get_allocated_width()
@@ -999,236 +981,6 @@ class DashboardWindow(Gtk.Window):
         cr.arc(cx, cy, radius, 0, 2 * math.pi)
         cr.stroke()
         return False
-
-    def open_avatar_file_chooser(self, *_):
-        self.in_dialog = True
-        chooser = Gtk.FileChooserNative.new(
-            "Choose Profile Picture",
-            None,
-            Gtk.FileChooserAction.OPEN,
-            "_Select",
-            "_Cancel"
-        )
-        filter_img = Gtk.FileFilter()
-        filter_img.set_name("Images (*.png, *.jpg, *.jpeg, *.webp, *.svg)")
-        filter_img.add_mime_type("image/png")
-        filter_img.add_mime_type("image/jpeg")
-        filter_img.add_mime_type("image/webp")
-        filter_img.add_mime_type("image/svg+xml")
-        filter_img.add_pattern("*.png")
-        filter_img.add_pattern("*.jpg")
-        filter_img.add_pattern("*.jpeg")
-        filter_img.add_pattern("*.webp")
-        filter_img.add_pattern("*.svg")
-        chooser.add_filter(filter_img)
-
-        chooser.connect("response", self.on_avatar_chosen)
-        chooser.show()
-
-    def on_avatar_chosen(self, dialog, response_id):
-        self.in_dialog = False
-        if response_id == Gtk.ResponseType.ACCEPT:
-            fn = dialog.get_filename()
-            if fn and os.path.exists(fn):
-                self.set_profile_picture(fn)
-        dialog.destroy()
-
-    def set_profile_picture(self, filepath):
-        try:
-            pb = GdkPixbuf.Pixbuf.new_from_file(filepath)
-            pw, ph = pb.get_width(), pb.get_height()
-            side = min(pw, ph)
-            src_x = (pw - side) // 2
-            src_y = (ph - side) // 2
-            square = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, side, side)
-            pb.copy_area(src_x, src_y, side, side, square, 0, 0)
-
-            # Resize to high-resolution square 512x512
-            final_pb = square.scale_simple(512, 512, GdkPixbuf.InterpType.BILINEAR)
-
-            target_waybar = os.path.expanduser("~/.config/waybar/avatar.png")
-            target_face = os.path.expanduser("~/.face")
-            target_face_icon = os.path.expanduser("~/.face.icon")
-
-            os.makedirs(os.path.dirname(target_waybar), exist_ok=True)
-            final_pb.savev(target_waybar, "png", [], [])
-            final_pb.savev(target_face, "png", [], [])
-            try:
-                final_pb.savev(target_face_icon, "png", [], [])
-            except Exception:
-                pass
-
-            self.reload_avatar_images()
-        except Exception as e:
-            print("Failed to update profile picture:", e, file=sys.stderr)
-
-    def remove_profile_picture(self, *_):
-        for p in [os.path.expanduser("~/.config/waybar/avatar.png"),
-                  os.path.expanduser("~/.face"),
-                  os.path.expanduser("~/.face.icon")]:
-            try:
-                if os.path.exists(p):
-                    os.remove(p)
-            except Exception:
-                pass
-        self.reload_avatar_images()
-
-    def build_settings_tab(self):
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        root.set_name("settings-content-box")
-
-        # Row 1: Profile & Avatar Card
-        prof_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
-        prof_card.set_name("settings-profile-card")
-        root.pack_start(prof_card, False, False, 0)
-
-        # 90x90 Circular Avatar Preview
-        avatar_box = Gtk.Box()
-        avatar_box.set_valign(Gtk.Align.CENTER)
-        self.avatar_draw_settings = Gtk.DrawingArea()
-        self.avatar_draw_settings.set_size_request(90, 90)
-        self.avatar_draw_settings.connect("draw", lambda w, cr: self.draw_avatar_surface(w, cr, self.avatar_pixbuf_90, 90))
-        avatar_box.pack_start(self.avatar_draw_settings, False, False, 0)
-        prof_card.pack_start(avatar_box, False, False, 0)
-
-        # User identity details & path info
-        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        info_box.set_valign(Gtk.Align.CENTER)
-        prof_card.pack_start(info_box, True, True, 0)
-
-        lbl_header = Gtk.Label(label="󰀉  Profile & Appearance")
-        lbl_header.get_style_context().add_class("settings-card-title")
-        lbl_header.set_xalign(0)
-        info_box.pack_start(lbl_header, False, False, 0)
-
-        username = os.getenv("USER", "user")
-        hostname = os.uname().nodename
-        lbl_user = Gtk.Label(label=f"@{username} • {hostname}")
-        lbl_user.set_xalign(0)
-        lbl_user.get_style_context().add_class("settings-user-name")
-        info_box.pack_start(lbl_user, False, False, 0)
-
-        self.lbl_avatar_source = Gtk.Label()
-        self.lbl_avatar_source.set_xalign(0)
-        self.lbl_avatar_source.get_style_context().add_class("settings-spec-label")
-        cur_path = self.get_current_avatar_path()
-        if cur_path:
-            disp_path = cur_path.replace(os.path.expanduser("~"), "~")
-            self.lbl_avatar_source.set_text(f"Active Picture: {disp_path}")
-        else:
-            self.lbl_avatar_source.set_text("Active Picture: Default user icon")
-        info_box.pack_start(self.lbl_avatar_source, False, False, 0)
-
-        lbl_tip = Gtk.Label(label="Supported: PNG, JPG, WEBP, SVG • Saved to ~/.face & Dashboard")
-        lbl_tip.set_xalign(0)
-        lbl_tip.get_style_context().add_class("settings-spec-hint")
-        info_box.pack_start(lbl_tip, False, False, 2)
-
-        # Action Buttons
-        btn_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        btn_box.set_valign(Gtk.Align.CENTER)
-        prof_card.pack_end(btn_box, False, False, 0)
-
-        btn_change = Gtk.Button(label="󰏫  Change Picture")
-        btn_change.get_style_context().add_class("btn-settings-primary")
-        btn_change.set_tooltip_text("Select an image file for your profile picture")
-        btn_change.connect("clicked", self.open_avatar_file_chooser)
-        btn_box.pack_start(btn_change, False, False, 0)
-
-        btn_remove = Gtk.Button(label="󰅖  Remove Picture")
-        btn_remove.get_style_context().add_class("btn-settings-secondary")
-        btn_remove.set_tooltip_text("Reset to default user icon")
-        btn_remove.connect("clicked", self.remove_profile_picture)
-        btn_box.pack_start(btn_remove, False, False, 0)
-
-        # Row 2: System Environment & Quick Controls
-        row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        root.pack_start(row2, True, True, 0)
-
-        # System & Environment Card
-        sys_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        sys_card.set_name("settings-system-card")
-        row2.pack_start(sys_card, True, True, 0)
-
-        lbl_sys_t = Gtk.Label(label="󰌢  System & Environment")
-        lbl_sys_t.get_style_context().add_class("settings-card-title")
-        lbl_sys_t.set_xalign(0)
-        sys_card.pack_start(lbl_sys_t, False, False, 0)
-
-        # Specs grid
-        os_name = "Linux"
-        try:
-            with open("/etc/os-release") as f:
-                for line in f:
-                    if line.startswith("PRETTY_NAME="):
-                        os_name = line.split("=", 1)[1].strip().strip('"')
-                        break
-        except Exception:
-            pass
-
-        specs = [
-            ("Operating System", os_name),
-            ("Compositor", "Niri (Scrollable Tiling Wayland)"),
-            ("Kernel", os.uname().release),
-            ("Shell", os.getenv("SHELL", "/bin/bash")),
-            ("Session Type", os.getenv("XDG_SESSION_TYPE", "wayland").capitalize()),
-        ]
-        for key, val in specs:
-            r = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-            lk = Gtk.Label(label=key)
-            lk.get_style_context().add_class("settings-spec-label")
-            lk.set_xalign(0)
-            lv = Gtk.Label(label=val)
-            lv.get_style_context().add_class("settings-spec-val")
-            lv.set_xalign(1)
-            r.pack_start(lk, True, True, 0)
-            r.pack_end(lv, False, False, 0)
-            sys_card.pack_start(r, False, False, 0)
-
-        # Quick Actions Card
-        act_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        act_card.set_name("settings-actions-card")
-        row2.pack_start(act_card, True, True, 0)
-
-        lbl_act_t = Gtk.Label(label="󰒓  Controls & Shortcuts")
-        lbl_act_t.get_style_context().add_class("settings-card-title")
-        lbl_act_t.set_xalign(0)
-        act_card.pack_start(lbl_act_t, False, False, 0)
-
-        shortcuts = [
-            ("Keys 1 / 2 / 3 / 4", "Switch Dashboard tabs"),
-            ("Esc", "Dismiss Dashboard"),
-            ("Clock Hover", "Auto drop-down & auto-hide"),
-            ("Pin Button (󰤱)", "Keep Dashboard pinned open"),
-        ]
-        for key, val in shortcuts:
-            r = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-            lk = Gtk.Label(label=key)
-            lk.get_style_context().add_class("settings-spec-label")
-            lk.set_xalign(0)
-            lv = Gtk.Label(label=val)
-            lv.get_style_context().add_class("settings-spec-val")
-            lv.set_xalign(1)
-            r.pack_start(lk, True, True, 0)
-            r.pack_end(lv, False, False, 0)
-            act_card.pack_start(r, False, False, 0)
-
-        # Quick action buttons row
-        q_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        q_box.set_margin_top(4)
-        act_card.pack_end(q_box, False, False, 0)
-
-        btn_reload = Gtk.Button(label="󰑐  Reload Waybar")
-        btn_reload.get_style_context().add_class("btn-settings-action")
-        btn_reload.connect("clicked", lambda *_: subprocess.Popen(["pkill", "-SIGUSR2", "waybar"]))
-        q_box.pack_start(btn_reload, True, True, 0)
-
-        btn_theme = Gtk.Button(label="󰏘  Theme CSS")
-        btn_theme.get_style_context().add_class("btn-settings-action")
-        btn_theme.connect("clicked", lambda *_: subprocess.Popen(["xdg-open", THEME_CSS]))
-        q_box.pack_start(btn_theme, True, True, 0)
-
-        return root
 
     # --- Data Fetching & Periodic Refresh ---
     def get_greeting(self):
@@ -1941,7 +1693,6 @@ class DashboardWindow(Gtk.Window):
             color: @fg-color;
         }}
 
-        /* Settings Tab & Profile Picture */
         #dash-avatar-btn {{
             background-image: none;
             background-color: transparent;
@@ -1955,105 +1706,6 @@ class DashboardWindow(Gtk.Window):
 
         #dash-avatar-btn:hover {{
             box-shadow: 0 0 14px alpha(@accent-purple, 0.7);
-        }}
-
-        #settings-profile-card {{
-            background-color: alpha(@accent-purple, 0.08);
-            border: 1px solid alpha(@accent-purple, 0.22);
-            border-radius: 20px;
-            padding: 18px 24px;
-        }}
-
-        #settings-system-card, #settings-actions-card {{
-            background-color: alpha(@accent-purple, 0.06);
-            border: 1px solid alpha(@accent-purple, 0.18);
-            border-radius: 18px;
-            padding: 16px 20px;
-        }}
-
-        .settings-card-title {{
-            font-size: 14px;
-            font-weight: 700;
-            color: @accent-purple;
-            margin-bottom: 4px;
-        }}
-
-        .settings-user-name {{
-            font-size: 15px;
-            font-weight: 700;
-            color: @fg-color;
-        }}
-
-        .settings-spec-label {{
-            font-size: 12px;
-            color: @comment-color;
-            font-weight: 500;
-        }}
-
-        .settings-spec-val {{
-            font-size: 12px;
-            color: @fg-color;
-            font-weight: 600;
-        }}
-
-        .settings-spec-hint {{
-            font-size: 11px;
-            color: alpha(@comment-color, 0.8);
-            font-style: italic;
-        }}
-
-        .btn-settings-primary {{
-            background-image: none;
-            background-color: @accent-purple;
-            color: @bg-color;
-            border: none;
-            border-radius: 9999px;
-            padding: 8px 18px;
-            font-size: 13px;
-            font-weight: 700;
-            outline: none;
-            box-shadow: 0 2px 10px alpha(@accent-purple, 0.4);
-        }}
-
-        .btn-settings-primary:hover {{
-            background-color: alpha(@accent-purple, 0.85);
-            box-shadow: 0 4px 16px alpha(@accent-purple, 0.6);
-        }}
-
-        .btn-settings-secondary {{
-            background-image: none;
-            background-color: alpha(@accent-purple, 0.15);
-            color: @fg-color;
-            border: 1px solid alpha(@accent-purple, 0.25);
-            border-radius: 9999px;
-            padding: 8px 16px;
-            font-size: 13px;
-            font-weight: 600;
-            outline: none;
-        }}
-
-        .btn-settings-secondary:hover {{
-            background-color: alpha(@accent-red, 0.4);
-            border-color: alpha(@accent-red, 0.7);
-            color: #ffffff;
-        }}
-
-        .btn-settings-action {{
-            background-image: none;
-            background-color: alpha(@accent-purple, 0.10);
-            color: @fg-color;
-            border: 1px solid alpha(@accent-purple, 0.20);
-            border-radius: 12px;
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 600;
-            outline: none;
-        }}
-
-        .btn-settings-action:hover {{
-            background-color: alpha(@accent-purple, 0.22);
-            color: @fg-color;
-            border-color: @accent-purple;
         }}
         """
         css_provider.load_from_data(css.encode('utf-8'))
