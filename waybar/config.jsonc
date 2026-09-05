@@ -166,7 +166,7 @@
 
     "custom/power": {
         "format": "⏻ ",
-        "on-click": "wlogout -b 3",
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/power-menu.py",
         "tooltip": "Power Menu (Super+Escape)"
     },
 

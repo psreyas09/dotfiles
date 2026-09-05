@@ -217,6 +217,22 @@ layer-rule {
     }
 }
 
+// Caelestia Power Menu blur & shadow
+layer-rule {
+    match namespace="^power-menu$"
+    background-effect {
+        blur true
+    }
+    shadow {
+        on
+        softness 40
+        spread 6
+        offset x=0 y=4
+        color "#00000080"
+    }
+    geometry-corner-radius 28
+}
+
 spawn-at-startup "lxpolkit"
 
 spawn-at-startup "sh" "-c" "killall waybar; waybar"
@@ -280,8 +296,8 @@ binds {
 
    
 
-    // --- Power Menu (Wlogout) ---
-    Mod+Escape { spawn "wlogout" "-b" "3"; }
+    // --- Power Menu (Caelestia Style) ---
+    Mod+Escape { spawn "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-menu.py"; }
     Mod+Shift+T { spawn "bash" "/home/sreyas/.config/niri/theme-switcher.sh"; }
     Mod+Shift+N { spawn "swaync-client" "-t" "-sw"; }
 
