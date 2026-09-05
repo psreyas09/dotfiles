@@ -230,6 +230,7 @@ spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f --screenshots --cl
 
 spawn-at-startup "/home/sreyas/.config/niri/wallpaper-picker.sh" "--restore"
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/macos-dock.py"
+spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py" "--daemon"
 
 
 binds {

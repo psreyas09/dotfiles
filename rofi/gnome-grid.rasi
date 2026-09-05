@@ -9,7 +9,7 @@
 configuration {
     modi: "drun";
     show-icons: true;
-    icon-theme: "Adwaita";
+    icon-theme: "breeze-dark";
     application-fallback-icon: "application-x-executable";
     display-drun: "";
     drun-display-format: "{name}";

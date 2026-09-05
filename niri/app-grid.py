@@ -1,8 +1,35 @@
 #!/usr/bin/python3
 import os
 import sys
-import time
 import signal
+
+PID_FILE = "/tmp/gnome_app_grid.pid"
+
+def is_pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+# Fast-path IPC: If daemon is running, toggle via signal and exit in <15ms without loading GTK
+if os.path.exists(PID_FILE):
+    try:
+        with open(PID_FILE, "r") as f:
+            pid = int(f.read().strip())
+        if is_pid_alive(pid):
+            if "--daemon" in sys.argv:
+                sys.exit(0)
+            os.kill(pid, signal.SIGUSR1)
+            sys.exit(0)
+    except (OSError, ValueError):
+        pass
+    try:
+        os.remove(PID_FILE)
+    except OSError:
+        pass
+
+import time
 import subprocess
 
 import gi
@@ -10,26 +37,25 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
 from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, Gio, GdkPixbuf, GLibUnix
 
-PID_FILE = "/tmp/gnome_app_grid.pid"
 THEME_CSS_PATH = "/home/sreyas/.config/waybar/current-theme.css"
 BLURRED_WALL_PATH = "/home/sreyas/.cache/current_wallpaper_blurred.png"
 
-def toggle_or_exit():
-    if os.path.exists(PID_FILE):
-        try:
-            with open(PID_FILE, "r") as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
-            os.kill(pid, signal.SIGUSR1)
-            sys.exit(0)
-        except (OSError, ValueError):
-            try:
-                os.remove(PID_FILE)
-            except OSError:
-                pass
+CATS_MAP = {
+    "Internet": ["network", "webbrowser", "email", "chat", "instantmessaging", "feed", "filetransfer", "p2p", "remoteaccess", "videoconference"],
+    "Development": ["development", "ide", "debugger", "texteditor", "webdevelopment", "science"],
+    "Media": ["audiovideo", "audio", "video", "graphics", "2dgraphics", "3dgraphics", "rastergraphics", "vectorgraphics", "photography", "recorder", "music", "player", "audiovideoediting", "viewer"],
+    "Games": ["game", "emulator", "simulation", "logicgame", "amusement"],
+    "Office": ["office", "calendar", "contactmanagement", "spreadsheet", "wordprocessor", "presentation"],
+    "Utilities": ["utility", "calculator", "clock", "scanning", "printing", "x-gnome-utilities", "accessories", "archiving"],
+    "System": ["system", "settings", "desktopsettings", "hardwaresettings", "filemanager", "terminalemulator", "monitor", "packagemanager", "filesystem"]
+}
 
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
+def handle_cli_and_ipc():
+    try:
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        print(f"Failed to write PID file: {e}")
 
 def cleanup():
     try:
@@ -91,13 +117,14 @@ class AppTile(Gtk.Button):
             if cmd:
                 clean_cmd = " ".join([p for p in cmd.split() if not p.startswith("%")])
                 subprocess.Popen(clean_cmd, shell=True)
-        GLib.idle_add(AppGridOverlay.instance.close_window)
+        if AppGridOverlay.instance:
+            GLib.idle_add(AppGridOverlay.instance.hide_overlay)
 
 
 class AppGridOverlay(Gtk.Window):
     instance = None
 
-    def __init__(self):
+    def __init__(self, start_hidden=False):
         AppGridOverlay.instance = self
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.set_title("Applications")
@@ -116,22 +143,52 @@ class AppGridOverlay(Gtk.Window):
 
         self.connect("destroy", lambda *_: cleanup())
         self.connect("key-press-event", self.on_key_press)
-        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda: (self.close_window(), False)[1])
+        self.connect("button-press-event", self.on_backdrop_clicked)
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.on_sigusr1)
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (cleanup(), False)[1])
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: (cleanup(), False)[1])
 
         self.apply_css()
         self.setup_ui()
 
-    def close_window(self, *_):
-        try:
-            if os.path.exists(PID_FILE):
-                os.remove(PID_FILE)
-        except OSError:
-            pass
-        cleanup()
+        # Realize widgets into GPU/Wayland buffer caches
+        self.show_all()
+        if start_hidden:
+            self.hide()
+        else:
+            self.show_overlay()
+
+    def on_sigusr1(self):
+        self.toggle_overlay()
+        return True
+
+    def toggle_overlay(self):
+        if self.get_visible():
+            self.hide_overlay()
+        else:
+            self.show_overlay()
+
+    def hide_overlay(self, *_):
+        self.hide()
+        self.search_entry.set_text("")
+        self.on_category_clicked(None, "All")
+
+    def show_overlay(self, *_):
+        self.show_all()
+        self.present()
+        self.search_entry.set_text("")
+        self.on_category_clicked(None, "All")
+        self.search_entry.grab_focus()
+
+    def on_backdrop_clicked(self, widget, event):
+        if event.window == self.get_window():
+            self.hide_overlay()
+            return True
+        return False
 
     def on_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_Escape:
-            self.close_window()
+            self.hide_overlay()
             return True
         elif event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             for name, exec_name, cats, tile in self.app_items:
@@ -217,7 +274,7 @@ class AppGridOverlay(Gtk.Window):
         btn_close.set_name("btn-grid-close")
         btn_close.set_tooltip_text("Close (Esc)")
         btn_close.set_valign(Gtk.Align.CENTER)
-        btn_close.connect("clicked", lambda *_: self.close_window())
+        btn_close.connect("clicked", lambda *_: self.hide_overlay())
         top_bar.pack_end(btn_close, False, False, 0)
 
         # GNOME Category Filter Bar
@@ -226,7 +283,7 @@ class AppGridOverlay(Gtk.Window):
         cat_box.set_name("cat-bar")
         main_vbox.pack_start(cat_box, False, False, 0)
 
-        categories = ["All", "Internet", "Development", "Media", "Games", "Utilities", "System"]
+        categories = ["All", "Internet", "Development", "Media", "Games", "Office", "Utilities", "System"]
         self.cat_buttons = {}
         for cat in categories:
             btn = Gtk.Button(label=cat)
@@ -425,17 +482,8 @@ class AppGridOverlay(Gtk.Window):
             else:
                 cat_match = False
                 cats_lower = [c.lower() for c in cats]
-                if self.active_category == "Internet" and any(k in cats_lower for k in ["network", "webbrowser", "email", "chat", "feed"]):
-                    cat_match = True
-                elif self.active_category == "Development" and any(k in cats_lower for k in ["development", "ide", "debugger", "texteditor"]):
-                    cat_match = True
-                elif self.active_category == "Media" and any(k in cats_lower for k in ["audiovideo", "audio", "video", "graphics", "recorder", "music"]):
-                    cat_match = True
-                elif self.active_category == "Games" and any(k in cats_lower for k in ["game", "emulator"]):
-                    cat_match = True
-                elif self.active_category == "Utilities" and any(k in cats_lower for k in ["utility", "accessories", "calculator", "archiving"]):
-                    cat_match = True
-                elif self.active_category == "System" and any(k in cats_lower for k in ["system", "settings", "hardware", "terminal", "filemanager"]):
+                cat_keys = CATS_MAP.get(self.active_category, [])
+                if any(k in cats_lower for k in cat_keys):
                     cat_match = True
 
             match = query_match and cat_match
@@ -629,9 +677,9 @@ class AppGridOverlay(Gtk.Window):
 
 
 def main():
-    toggle_or_exit()
-    app = AppGridOverlay()
-    app.show_all()
+    handle_cli_and_ipc()
+    is_daemon = "--daemon" in sys.argv
+    app = AppGridOverlay(start_hidden=is_daemon)
     Gtk.main()
 
 if __name__ == "__main__":
