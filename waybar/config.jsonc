@@ -53,25 +53,10 @@
     "clock": {
         "format": " {:%I:%M %p}", 
         "format-alt": " {:%A, %B %d, %Y}",
+        "tooltip": false,
         "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/dashboard.py",
-        "tooltip-format": "<span font='JetBrains Mono 10'><tt>{calendar}</tt></span>",
-        "calendar": {
-            "mode": "month",
-            "mode-mon-col": 3,
-            "weeks-pos": "right",
-            "on-scroll": 1,
-            "format": {
-                "months": "<span color='#83a598'><b>{}</b></span>",
-                "days": "<span color='#ebdbb2'><b>{}</b></span>",
-                "weeks": "<span color='#999999'><b>W{}</b></span>",
-                "weekdays": "<span color='#fabd2f'><b>{}</b></span>",
-                "today": "<span color='#ea6962'><b><u>{}</u></b></span>"
-            }
-        },
         "actions": {
-            "on-click-right": "mode",
-            "on-scroll-up": "shift_up",
-            "on-scroll-down": "shift_down"
+            "on-click-right": "mode"
         }
     },
 
