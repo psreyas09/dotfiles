@@ -110,6 +110,10 @@ class DashboardWindow(Gtk.Window):
         self.cal_year = now.year
         self.cal_month = now.month
 
+        # CPU previous counters for real-time CPU delta calculation
+        self.last_cpu_idle, self.last_cpu_total = self.get_cpu_times()
+        self.current_cpu_pct = 0
+
         # Network previous counters for bandwidth calculation
         self.last_net_bytes = self.get_net_bytes()
         self.last_net_time = time.time()
@@ -874,6 +878,34 @@ class DashboardWindow(Gtk.Window):
         except Exception:
             return "up system"
 
+    def get_cpu_times(self):
+        try:
+            with open("/proc/stat") as f:
+                line = f.readline()
+            flds = [float(x) for x in line.split()[1:8]]
+            idle = flds[3] + flds[4]  # idle + iowait
+            total = sum(flds)
+            return idle, total
+        except Exception:
+            return 0.0, 0.0
+
+    def update_cpu_stats(self):
+        cur_idle, cur_total = self.get_cpu_times()
+        if not hasattr(self, "last_cpu_total"):
+            self.last_cpu_idle = cur_idle
+            self.last_cpu_total = cur_total
+            self.current_cpu_pct = 0
+            return 0
+
+        diff_idle = cur_idle - self.last_cpu_idle
+        diff_total = cur_total - self.last_cpu_total
+        if diff_total > 0:
+            pct = int(round(((diff_total - diff_idle) / diff_total) * 100.0))
+            self.current_cpu_pct = max(0, min(100, pct))
+            self.last_cpu_idle = cur_idle
+            self.last_cpu_total = cur_total
+        return self.current_cpu_pct
+
     def get_net_bytes(self):
         total_in, total_out = 0, 0
         try:
@@ -951,18 +983,8 @@ class DashboardWindow(Gtk.Window):
         # Weather (async)
         self.refresh_weather()
 
-        # CPU info
-        cpu_pct = 0
-        try:
-            with open("/proc/stat") as f:
-                line = f.readline()
-            flds = [float(x) for x in line.split()[1:8]]
-            idle = flds[3] + flds[4]
-            total = sum(flds)
-            cpu_pct = int(((total - idle) / (total or 1)) * 100)
-        except Exception:
-            cpu_pct = 15
-        cpu_pct = max(1, min(100, cpu_pct))
+        # CPU info (real-time delta matching Waybar and btop)
+        cpu_pct = self.update_cpu_stats()
 
         cpu_model = "AMD Ryzen 5"
         try:
@@ -1079,6 +1101,8 @@ class DashboardWindow(Gtk.Window):
         self.update_network_rates()
 
     def on_refresh_tick(self):
+        self.update_cpu_stats()
+        self.update_network_rates()
         if self.is_open:
             self.refresh_all_data()
         return True

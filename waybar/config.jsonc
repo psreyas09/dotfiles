@@ -69,6 +69,7 @@
     },
 
     "cpu": { 
+        "interval": 2,
         "format": " {usage}%",
         "on-click": "kitty --class=system-monitor -e btop"
     },
