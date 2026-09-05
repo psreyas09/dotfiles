@@ -1,0 +1,13 @@
+[Unit]
+Description=macOS Floating Glass Dock for Niri
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/sreyas/.config/niri/macos-dock.py
+Restart=always
+RestartSec=1
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

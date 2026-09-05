@@ -1079,17 +1079,20 @@ class MediaPopup(Gtk.Window):
             font-size: 14.5px;
             font-weight: 800;
             color: @fg-color;
+            font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 
         #media-artist {{
             font-size: 12px;
             font-weight: 600;
             color: @accent-purple;
+            font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 
         #media-album {{
             font-size: 11px;
             color: @comment-color;
+            font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
         }}
 
         #time-label {{

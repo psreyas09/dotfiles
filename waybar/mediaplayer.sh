@@ -28,14 +28,14 @@ while true; do
 
         if [ "$status" = "Playing" ]; then
             eq="${EQ_FRAMES[$frame_idx]}"
-            display_text="$eq $title"
+            display_text="$eq <span font_features='liga=0,clig=0,dlig=0,calt=0'>$clean_title</span>"
             frame_idx=$(( (frame_idx + 1) % num_frames ))
             sleep_time=0.8
         elif [ "$status" = "Paused" ]; then
-            display_text="$title"
+            display_text="<span font_features='liga=0,clig=0,dlig=0,calt=0'>$clean_title</span>"
             sleep_time=1.5
         else
-            display_text="$title"
+            display_text="<span font_features='liga=0,clig=0,dlig=0,calt=0'>$clean_title</span>"
             sleep_time=2.0
         fi
 
@@ -45,7 +45,7 @@ while true; do
               --arg class "$status" \
               '{$text, $alt, $tooltip, $class}' -c
     else
-        echo '{"text": "No Media", "alt": "Stopped", "tooltip": "No media playing", "class": "stopped"}'
+        echo '{"text": "<span font_features=\"liga=0,clig=0,dlig=0,calt=0\">No Media</span>", "alt": "Stopped", "tooltip": "No media playing", "class": "stopped"}'
         sleep_time=2.0
     fi
     sleep "$sleep_time"

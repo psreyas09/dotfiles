@@ -2090,7 +2090,7 @@ class MacOSDock(Gtk.Window):
         dt = min(0.05, now - self.last_anim_time)
         self.last_anim_time = now
 
-        HIDDEN_MARGIN = -110.0
+        HIDDEN_MARGIN = -105.0
         target = 0.0 if self.should_be_visible() else HIDDEN_MARGIN
         diff = target - self.current_margin
 

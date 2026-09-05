@@ -228,6 +228,8 @@ calendar label {
 
 #custom-media {
     color: @fg-color;
+    font-family: "Noto Sans", "JetBrains Mono NL", sans-serif;
+    font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
     font-weight: bold;
     font-size: 12.5px;
     padding: 0 8px 0 0;
