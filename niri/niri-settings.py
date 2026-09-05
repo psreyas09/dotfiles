@@ -593,18 +593,33 @@ class AvatarCropDialog(Gtk.Dialog):
             destroy_with_parent=True
         )
         self.set_default_size(460, 620)
+        self.set_size_request(460, 600)
         self.set_resizable(False)
         self.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
         self.set_name("crop-dialog")
 
         self.image_path = image_path
         self.orig_pixbuf = None
+        self.display_pixbuf = None
         try:
             if image_path and os.path.exists(image_path):
                 pb = GdkPixbuf.Pixbuf.new_from_file(image_path)
                 if hasattr(pb, 'apply_embedded_orientation'):
                     pb = pb.apply_embedded_orientation()
                 self.orig_pixbuf = pb
+                # Create optimized display pixbuf for smooth 120Hz canvas rendering
+                pw = pb.get_width()
+                ph = pb.get_height()
+                max_dim = max(pw, ph)
+                if max_dim > 1400:
+                    sc = 1400.0 / max_dim
+                    self.display_pixbuf = pb.scale_simple(
+                        max(1, int(round(pw * sc))),
+                        max(1, int(round(ph * sc))),
+                        GdkPixbuf.InterpType.BILINEAR
+                    )
+                else:
+                    self.display_pixbuf = pb
         except Exception as e:
             print(f"Error loading image for crop dialog: {e}", file=sys.stderr)
 
@@ -621,6 +636,7 @@ class AvatarCropDialog(Gtk.Dialog):
         self.crop_radius = 135.0
 
         self.setup_ui()
+        self.show_all()
 
     def setup_ui(self):
         content = self.get_content_area()
@@ -805,9 +821,10 @@ class AvatarCropDialog(Gtk.Dialog):
         cr.fill()
 
         # 2. Draw transformed image
-        if self.orig_pixbuf:
-            ow = self.orig_pixbuf.get_width()
-            oh = self.orig_pixbuf.get_height()
+        draw_pb = self.display_pixbuf or self.orig_pixbuf
+        if draw_pb:
+            ow = draw_pb.get_width()
+            oh = draw_pb.get_height()
             eff_w, eff_h = (oh, ow) if self.rotation_deg in (90, 270) else (ow, oh)
             min_dim = max(1, min(eff_w, eff_h))
             base_scale = (2.0 * r) / min_dim
@@ -817,9 +834,17 @@ class AvatarCropDialog(Gtk.Dialog):
             cr.translate(cx + self.offset_x, cy + self.offset_y)
             cr.rotate(math.radians(self.rotation_deg))
             cr.scale(scale, scale)
-            Gdk.cairo_set_source_pixbuf(cr, self.orig_pixbuf, -ow / 2.0, -oh / 2.0)
+            Gdk.cairo_set_source_pixbuf(cr, draw_pb, -ow / 2.0, -oh / 2.0)
             cr.paint()
             cr.restore()
+        else:
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.45)
+            layout = widget.create_pango_layout("No Image Selected")
+            desc = Pango.FontDescription("13")
+            layout.set_font_description(desc)
+            _, logical = layout.get_pixel_extents()
+            cr.move_to(cx - logical.width / 2.0, cy - logical.height / 2.0)
+            PangoCairo.show_layout(cr, layout)
 
         # 3. Dimmed mask outside circle
         cr.save()
@@ -1658,6 +1683,7 @@ class NiriSettingsApp(Gtk.Window):
             if not image_path or not os.path.exists(image_path):
                 return False
             crop_dlg = AvatarCropDialog(self, image_path)
+            crop_dlg.show_all()
             res = crop_dlg.run()
             saved = False
             if res == Gtk.ResponseType.ACCEPT:
