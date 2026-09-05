@@ -112,6 +112,7 @@ class DashboardWindow(Gtk.Window):
 
         # CPU previous counters for real-time CPU delta calculation
         self.last_cpu_idle, self.last_cpu_total = self.get_cpu_times()
+        self.last_cpu_time = time.time()
         self.current_cpu_pct = 0
 
         # Network previous counters for bandwidth calculation
@@ -890,13 +891,18 @@ class DashboardWindow(Gtk.Window):
             return 0.0, 0.0
 
     def update_cpu_stats(self):
-        cur_idle, cur_total = self.get_cpu_times()
-        if not hasattr(self, "last_cpu_total"):
-            self.last_cpu_idle = cur_idle
-            self.last_cpu_total = cur_total
+        now = time.time()
+        if not hasattr(self, "last_cpu_time"):
+            self.last_cpu_idle, self.last_cpu_total = self.get_cpu_times()
+            self.last_cpu_time = now
             self.current_cpu_pct = 0
             return 0
 
+        dt = now - self.last_cpu_time
+        if dt < 0.8:
+            return self.current_cpu_pct
+
+        cur_idle, cur_total = self.get_cpu_times()
         diff_idle = cur_idle - self.last_cpu_idle
         diff_total = cur_total - self.last_cpu_total
         if diff_total > 0:
@@ -904,6 +910,7 @@ class DashboardWindow(Gtk.Window):
             self.current_cpu_pct = max(0, min(100, pct))
             self.last_cpu_idle = cur_idle
             self.last_cpu_total = cur_total
+            self.last_cpu_time = now
         return self.current_cpu_pct
 
     def get_net_bytes(self):
@@ -1101,10 +1108,11 @@ class DashboardWindow(Gtk.Window):
         self.update_network_rates()
 
     def on_refresh_tick(self):
-        self.update_cpu_stats()
-        self.update_network_rates()
         if self.is_open:
             self.refresh_all_data()
+        else:
+            self.update_cpu_stats()
+            self.update_network_rates()
         return True
 
     def apply_css(self):
