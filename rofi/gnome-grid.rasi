@@ -1,18 +1,21 @@
 /**
  * GNOME 40+ Activities Style Grid Theme for Rofi (rofi-wayland)
- * Adwaita Dark Design Framework:
- * - Background: #242424df
- * - Foreground: #f6f5f4ff
- * - Accent / Focus Ring: #3584e4ff
+ * Adwaita Dark Design Framework with Category Filters
  */
 
 configuration {
-    modi: "drun";
+    modes: [
+        "All:/home/sreyas/.config/rofi/rofi-categories.py All",
+        "Internet:/home/sreyas/.config/rofi/rofi-categories.py Internet",
+        "Development:/home/sreyas/.config/rofi/rofi-categories.py Development",
+        "Media:/home/sreyas/.config/rofi/rofi-categories.py Media",
+        "Games:/home/sreyas/.config/rofi/rofi-categories.py Games",
+        "Office:/home/sreyas/.config/rofi/rofi-categories.py Office",
+        "System:/home/sreyas/.config/rofi/rofi-categories.py System"
+    ];
     show-icons: true;
     icon-theme: "breeze-dark";
     application-fallback-icon: "application-x-executable";
-    display-drun: "";
-    drun-display-format: "{name}";
     hover-select: true;
     me-select-entry: "";
     me-accept-entry: "MousePrimary";
@@ -31,20 +34,20 @@ window {
     fullscreen: true;
     transparency: "real";
     background-color: #242424df;
-    padding: 10% 12%;
+    padding: 7% 12% 5% 12%;
     children: [ mainbox ];
 }
 
 mainbox {
     orientation: vertical;
-    spacing: 36px;
+    spacing: 24px;
     background-color: transparent;
-    children: [ inputbar, listview ];
+    children: [ inputbar, mode-switcher, listview ];
 }
 
 inputbar {
     background-color: transparent;
-    margin: 0% 25% 12px 25%;
+    margin: 0% 25% 4px 25%;
     children: [ entry ];
 }
 
@@ -60,6 +63,32 @@ entry {
     horizontal-align: 0.5;
     vertical-align: 0.5;
     cursor: text;
+}
+
+mode-switcher {
+    orientation: horizontal;
+    spacing: 10px;
+    background-color: transparent;
+    margin: 0% 10% 8px 10%;
+}
+
+button {
+    padding: 6px 16px;
+    border-radius: 18px;
+    background-color: #323232aa;
+    text-color: #f6f5f4aa;
+    cursor: pointer;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "Adwaita Sans 10.5";
+    border: 1.5px solid;
+    border-color: #ffffff12;
+}
+
+button selected {
+    background-color: #3584e4ff;
+    text-color: #ffffffff;
+    border-color: #3584e4ff;
 }
 
 listview {

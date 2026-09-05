@@ -230,7 +230,6 @@ spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f --screenshots --cl
 
 spawn-at-startup "/home/sreyas/.config/niri/wallpaper-picker.sh" "--restore"
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/macos-dock.py"
-spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py" "--daemon"
 
 
 binds {
@@ -248,7 +247,7 @@ binds {
     // --- Terminal & Apps ---
     Mod+Return { spawn "kitty"; }
     Mod+Space { spawn "fuzzel"; }
-    Mod+A { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py"; }
+    Mod+A { spawn "rofi" "-show" "All" "-theme" "/home/sreyas/.config/rofi/gnome-grid.rasi"; }
     Mod+B { spawn "firefox"; }
     Mod+N { spawn "nautilus"; }
     Mod+Comma { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/niri-settings.py"; }
