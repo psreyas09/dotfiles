@@ -22,6 +22,8 @@ import subprocess
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+import threading
+import cairo
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
@@ -97,8 +99,10 @@ class DashboardWindow(Gtk.Window):
         # State tracking
         self.is_open = False
         self.pinned = False
-        self.anim_start = None
-        self.close_start = None
+        self.anim_tick_id = None
+        self.anim_direction = 0     # +1 opening, -1 closing, 0 idle
+        self.anim_progress = 0.0    # 0.0 closed, 1.0 open
+        self.anim_last_time = None
         self.current_tab = 0
 
         # Calendar state
@@ -116,11 +120,31 @@ class DashboardWindow(Gtk.Window):
         self.connect("key-press-event", self.on_key_press)
         self.connect("focus-out-event", self.on_focus_out)
 
+        self.add_events(
+            Gdk.EventMask.ENTER_NOTIFY_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
+            | Gdk.EventMask.KEY_PRESS_MASK
+        )
+        self.connect("enter-notify-event", self.on_mouse_enter)
+        self.connect("leave-notify-event", self.on_mouse_leave)
+
         self.setup_ui()
         self.apply_css()
 
         # Regular refresh timer (every 1.5 seconds)
         GLib.timeout_add(1500, self.on_refresh_tick)
+
+    def on_mouse_enter(self, widget, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
+        self.app.on_dashboard_enter()
+        return False
+
+    def on_mouse_leave(self, widget, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
+        self.app.on_dashboard_leave()
+        return False
 
     def on_focus_out(self, widget, event):
         return False
@@ -140,64 +164,103 @@ class DashboardWindow(Gtk.Window):
             return True
         return False
 
+    def on_pin_clicked(self, *_):
+        self.pinned = not self.pinned
+        self.update_pin_button_state()
+        if not self.pinned:
+            if not self.app.mouse_in_dashboard and not self.app.mouse_in_trigger:
+                self.app.schedule_hide_check()
+
+    def update_pin_button_state(self):
+        if hasattr(self, 'btn_pin'):
+            ctx = self.btn_pin.get_style_context()
+            if self.pinned:
+                self.btn_pin.set_label("󰤰")
+                self.btn_pin.set_tooltip_text("Unpin (auto-hide on mouse leave)")
+                if not ctx.has_class("pinned"):
+                    ctx.add_class("pinned")
+            else:
+                self.btn_pin.set_label("󰤱")
+                self.btn_pin.set_tooltip_text("Pin Dashboard open")
+                if ctx.has_class("pinned"):
+                    ctx.remove_class("pinned")
+
     def open_animated(self, pinned=False):
         if pinned:
             self.pinned = True
+        self.update_pin_button_state()
 
-        if self.is_open and self.get_visible():
+        if self.is_open and self.anim_direction >= 0 and self.anim_progress >= 1.0:
             return
 
         self.is_open = True
-        self.anim_start = None
         self.refresh_all_data()
 
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
-        Gtk.Widget.set_opacity(self, 0.0)
+        if not self.get_visible() or self.anim_progress <= 0.0:
+            self.anim_progress = 0.0
+            GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
+            Gtk.Widget.set_opacity(self, 0.0)
+
         self.show_all()
         self.switch_tab(self.current_tab)
-        self.add_tick_callback(self.on_animate_in)
 
-    def on_animate_in(self, widget, frame_clock):
+        self.anim_direction = 1
+        self.anim_last_time = time.time()
+        if self.anim_tick_id is None:
+            self.anim_tick_id = self.add_tick_callback(self.on_anim_tick)
+
+    def close_animated(self, *_):
+        if not self.is_open and self.anim_direction <= 0 and self.anim_progress <= 0.0:
+            return
+
+        self.is_open = False
+        self.pinned = False
+        self.update_pin_button_state()
+
+        self.anim_direction = -1
+        self.anim_last_time = time.time()
+        if self.anim_tick_id is None:
+            self.anim_tick_id = self.add_tick_callback(self.on_anim_tick)
+
+    def on_anim_tick(self, widget, frame_clock):
         now = time.time()
-        if self.anim_start is None:
-            self.anim_start = now
-        elapsed = now - self.anim_start
-        progress = min(1.0, elapsed / 0.18)
-        ease = 1.0 - (1.0 - progress) ** 3
+        if self.anim_last_time is None:
+            self.anim_last_time = now
+        dt = max(0.0, min(0.1, now - self.anim_last_time))
+        self.anim_last_time = now
 
-        Gtk.Widget.set_opacity(self, ease)
-        curr_margin = int(self.start_margin_top + (self.target_margin_top - self.start_margin_top) * ease)
+        duration = 0.18 if self.anim_direction > 0 else 0.14
+        delta = dt / duration if duration > 0 else 1.0
+
+        if self.anim_direction > 0:
+            self.anim_progress = min(1.0, self.anim_progress + delta)
+            # Ease out cubic: 1 - (1 - p)^3
+            ease = 1.0 - (1.0 - self.anim_progress) ** 3
+        else:
+            self.anim_progress = max(0.0, self.anim_progress - delta)
+            # Ease in quadratic: p^2
+            ease = self.anim_progress ** 2
+
+        ease_clamped = max(0.0, min(1.0, ease))
+        Gtk.Widget.set_opacity(self, ease_clamped)
+        curr_margin = int(self.start_margin_top + (self.target_margin_top - self.start_margin_top) * ease_clamped)
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, curr_margin)
 
-        if progress >= 1.0:
+        if self.anim_direction > 0 and self.anim_progress >= 1.0:
+            self.anim_direction = 0
+            self.anim_tick_id = None
+            self.anim_last_time = None
             Gtk.Widget.set_opacity(self, 1.0)
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.target_margin_top)
             return False
-        return True
 
-    def close_animated(self, *_):
-        if not self.is_open:
-            return
-        self.is_open = False
-        self.pinned = False
-        self.close_start = None
-        self.add_tick_callback(self.on_animate_out)
-
-    def on_animate_out(self, widget, frame_clock):
-        now = time.time()
-        if self.close_start is None:
-            self.close_start = now
-        elapsed = now - self.close_start
-        progress = min(1.0, elapsed / 0.14)
-        ease = progress ** 2
-
-        Gtk.Widget.set_opacity(self, max(0.0, 1.0 - ease))
-        curr_margin = int(self.target_margin_top - (self.target_margin_top - self.start_margin_top) * ease)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, curr_margin)
-
-        if progress >= 1.0:
+        if self.anim_direction < 0 and self.anim_progress <= 0.0:
+            self.anim_direction = 0
+            self.anim_tick_id = None
+            self.anim_last_time = None
             self.hide()
             return False
+
         return True
 
     # --- UI Setup ---
@@ -225,11 +288,23 @@ class DashboardWindow(Gtk.Window):
         tabs_box.pack_start(self.tab_btn_perf, False, False, 0)
         tabs_box.pack_start(self.tab_btn_work, False, False, 0)
 
+        # Actions box (Pin and Close)
+        actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        header.pack_end(actions_box, False, False, 0)
+
         # Close button
         btn_close = Gtk.Button(label="󰅖")
         btn_close.set_name("btn-dash-close")
+        btn_close.set_tooltip_text("Close Dashboard (Esc)")
         btn_close.connect("clicked", self.close_animated)
-        header.pack_end(btn_close, False, False, 0)
+        actions_box.pack_end(btn_close, False, False, 0)
+
+        # Pin toggle button
+        self.btn_pin = Gtk.Button(label="󰤱")
+        self.btn_pin.set_name("btn-dash-pin")
+        self.btn_pin.set_tooltip_text("Pin Dashboard open")
+        self.btn_pin.connect("clicked", self.on_pin_clicked)
+        actions_box.pack_end(self.btn_pin, False, False, 0)
 
         # Stack container for tabs
         self.stack = Gtk.Stack()
@@ -837,22 +912,32 @@ class DashboardWindow(Gtk.Window):
             self.lbl_net_up.set_text(f"↑ {self.net_up_str}")
 
     def refresh_weather(self):
-        try:
-            out = subprocess.check_output(["/home/sreyas/.config/waybar/weather.sh"], text=True, timeout=2)
-            data = json.loads(out)
-            text = data.get("text", "")
-            parts = text.split(maxsplit=1)
-            icon = parts[0] if parts else "󰖙"
-            temp = parts[1] if len(parts) > 1 else ""
-            desc = data.get("tooltip", "").replace("Current Weather:", "").strip()
+        now = time.time()
+        if hasattr(self, "_last_weather_time") and (now - self._last_weather_time < 300):
+            return
+        self._last_weather_time = now
 
-            self.lbl_weather_icon.set_text(icon)
-            self.lbl_weather_temp.set_text(temp or "28°C")
-            self.lbl_weather_desc.set_text(desc or "Partly Cloudy")
-        except Exception:
-            self.lbl_weather_icon.set_text("󰖙")
-            self.lbl_weather_temp.set_text("28°C")
-            self.lbl_weather_desc.set_text("Clear Sky")
+        def fetch():
+            try:
+                out = subprocess.check_output(["/home/sreyas/.config/waybar/weather.sh"], text=True, timeout=3)
+                data = json.loads(out)
+                text = data.get("text", "")
+                parts = text.split(maxsplit=1)
+                icon = parts[0] if parts else "󰖙"
+                temp = parts[1] if len(parts) > 1 else ""
+                desc = data.get("tooltip", "").replace("Current Weather:", "").strip()
+
+                def update_ui():
+                    if hasattr(self, "lbl_weather_icon"):
+                        self.lbl_weather_icon.set_text(icon)
+                        self.lbl_weather_temp.set_text(temp or "28°C")
+                        self.lbl_weather_desc.set_text(desc or "Partly Cloudy")
+                    return False
+                GLib.idle_add(update_ui)
+            except Exception:
+                pass
+
+        threading.Thread(target=fetch, daemon=True).start()
 
     def refresh_all_data(self):
         # Update clock
@@ -863,7 +948,7 @@ class DashboardWindow(Gtk.Window):
         self.lbl_greeting.set_text(self.get_greeting())
         self.lbl_uptime.set_text(f"󱑂 {self.get_uptime()}")
 
-        # Weather
+        # Weather (async)
         self.refresh_weather()
 
         # CPU info
@@ -891,11 +976,12 @@ class DashboardWindow(Gtk.Window):
 
         cpu_temp = "48.0°C"
         try:
-            out = subprocess.check_output(["sensors"], text=True)
-            for l in out.splitlines():
-                if "Tctl:" in l or "edge:" in l:
-                    cpu_temp = l.split(":", 1)[1].strip().replace("+", "")
-                    break
+            import glob
+            t_files = glob.glob("/sys/class/hwmon/hwmon*/temp*_input")
+            if t_files:
+                with open(t_files[0]) as f:
+                    val = float(f.read().strip()) / 1000.0
+                    cpu_temp = f"{val:.1f}°C"
         except Exception:
             pass
 
@@ -946,26 +1032,36 @@ class DashboardWindow(Gtk.Window):
         except Exception:
             pass
 
-        # GPU info (via nvidia-smi with fallback)
-        gpu_name = "NVIDIA GeForce GTX 1650"
-        gpu_temp = "48.0°C"
-        gpu_usage = "Active"
-        try:
-            smi_out = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=name,temperature.gpu,utilization.gpu", "--format=csv,noheader,nounits"],
-                text=True, timeout=1
-            )
-            parts = [p.strip() for p in smi_out.strip().split(",")]
-            if len(parts) >= 3:
-                gpu_name = parts[0]
-                gpu_temp = f"{parts[1]}.0°C"
-                gpu_usage = f"{parts[2]}%"
-        except Exception:
-            pass
+        # GPU info (via background worker to prevent UI lag)
+        now_gpu = time.time()
+        if not hasattr(self, "_last_gpu_time") or (now_gpu - self._last_gpu_time >= 2.0):
+            self._last_gpu_time = now_gpu
+            def fetch_gpu():
+                gpu_name = "NVIDIA GeForce GTX 1650"
+                gpu_temp = "48.0°C"
+                gpu_usage = "Active"
+                try:
+                    smi_out = subprocess.check_output(
+                        ["nvidia-smi", "--query-gpu=name,temperature.gpu,utilization.gpu", "--format=csv,noheader,nounits"],
+                        text=True, timeout=1
+                    )
+                    parts = [p.strip() for p in smi_out.strip().split(",")]
+                    if len(parts) >= 3:
+                        gpu_name = parts[0]
+                        gpu_temp = f"{parts[1]}.0°C"
+                        gpu_usage = f"{parts[2]}%"
+                except Exception:
+                    pass
 
-        self.perf_gpu_card[1].set_text(gpu_name)
-        self.perf_gpu_card[2].set_text(gpu_usage)
-        self.perf_gpu_card[3].set_text(gpu_temp)
+                def update_gpu_ui():
+                    if hasattr(self, "perf_gpu_card"):
+                        self.perf_gpu_card[1].set_text(gpu_name)
+                        self.perf_gpu_card[2].set_text(gpu_usage)
+                        self.perf_gpu_card[3].set_text(gpu_temp)
+                    return False
+                GLib.idle_add(update_gpu_ui)
+
+            threading.Thread(target=fetch_gpu, daemon=True).start()
 
         # Battery info
         try:
@@ -1060,6 +1156,28 @@ class DashboardWindow(Gtk.Window):
         #btn-dash-close:hover {{
             background-color: alpha(@accent-red, 0.6);
             color: #ffffff;
+        }}
+
+        #btn-dash-pin {{
+            background-image: none;
+            background-color: transparent;
+            border: none;
+            color: @comment-color;
+            font-size: 14px;
+            border-radius: 9999px;
+            min-width: 28px;
+            min-height: 28px;
+            padding: 2px 6px;
+        }}
+
+        #btn-dash-pin:hover {{
+            background-color: alpha(@accent-purple, 0.25);
+            color: @accent-purple;
+        }}
+
+        #btn-dash-pin.pinned {{
+            background-color: alpha(@accent-purple, 0.35);
+            color: @accent-purple;
         }}
 
         /* User Card */
@@ -1451,7 +1569,7 @@ class HoverTriggerWindow(Gtk.Window):
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.BOTTOM, False)
 
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 0)
-        self.set_size_request(280, 36)
+        self.set_size_request(240, 46)
 
         # Fully transparent visual
         screen = self.get_screen()
@@ -1459,29 +1577,39 @@ class HoverTriggerWindow(Gtk.Window):
         if visual:
             self.set_visual(visual)
         self.set_app_paintable(True)
+        self.connect("draw", self.on_draw)
 
         ev_box = Gtk.EventBox()
         ev_box.set_visible_window(False)
-        ev_box.set_size_request(280, 36)
-        ev_box.add_events(
-            Gdk.EventMask.ENTER_NOTIFY_MASK
-            | Gdk.EventMask.BUTTON_PRESS_MASK
-        )
-        ev_box.connect("enter-notify-event", self.on_mouse_enter)
-        ev_box.connect("button-press-event", self.on_button_press)
+        ev_box.set_size_request(240, 46)
         self.add(ev_box)
 
-        # Event masks for hover and click on the window as well
+        # Event masks for hover and click
         self.add_events(
             Gdk.EventMask.ENTER_NOTIFY_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
             | Gdk.EventMask.BUTTON_PRESS_MASK
         )
 
         self.connect("enter-notify-event", self.on_mouse_enter)
+        self.connect("leave-notify-event", self.on_mouse_leave)
         self.connect("button-press-event", self.on_button_press)
 
+    def on_draw(self, widget, cr):
+        cr.set_operator(cairo.OPERATOR_CLEAR)
+        cr.paint()
+        return False
+
     def on_mouse_enter(self, widget, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
         self.app.on_trigger_enter()
+        return False
+
+    def on_mouse_leave(self, widget, event):
+        if event.detail == Gdk.NotifyType.INFERIOR:
+            return False
+        self.app.on_trigger_leave()
         return False
 
     def on_button_press(self, widget, event):
@@ -1491,17 +1619,55 @@ class HoverTriggerWindow(Gtk.Window):
 
 class DashboardApp:
     def __init__(self):
+        self.mouse_in_trigger = False
+        self.mouse_in_dashboard = False
+        self.hide_timer_id = None
+
         self.dashboard_win = DashboardWindow(self)
         self.trigger_win = HoverTriggerWindow(self)
         self.trigger_win.show_all()
 
+    def cancel_hide_timer(self):
+        if self.hide_timer_id is not None:
+            GLib.source_remove(self.hide_timer_id)
+            self.hide_timer_id = None
+
+    def schedule_hide_check(self):
+        self.cancel_hide_timer()
+        # Only auto-hide if not pinned and currently open (or opening)
+        if not self.dashboard_win.pinned and self.dashboard_win.is_open:
+            self.hide_timer_id = GLib.timeout_add(350, self._on_hide_timer_fired)
+
+    def _on_hide_timer_fired(self):
+        self.hide_timer_id = None
+        if not self.mouse_in_trigger and not self.mouse_in_dashboard:
+            if not self.dashboard_win.pinned:
+                self.dashboard_win.close_animated()
+        return False
+
     def on_trigger_enter(self):
-        self.dashboard_win.open_animated(pinned=True)
+        self.mouse_in_trigger = True
+        self.cancel_hide_timer()
+        if not self.dashboard_win.is_open or self.dashboard_win.anim_direction < 0:
+            self.dashboard_win.open_animated(pinned=False)
+
+    def on_trigger_leave(self):
+        self.mouse_in_trigger = False
+        self.schedule_hide_check()
+
+    def on_dashboard_enter(self):
+        self.mouse_in_dashboard = True
+        self.cancel_hide_timer()
+
+    def on_dashboard_leave(self):
+        self.mouse_in_dashboard = False
+        self.schedule_hide_check()
 
     def on_trigger_click(self):
         self.toggle()
 
     def toggle(self):
+        self.cancel_hide_timer()
         if self.dashboard_win.is_open:
             self.dashboard_win.close_animated()
         else:
@@ -1513,6 +1679,7 @@ class DashboardApp:
                 with open(TAB_FILE, "r") as f:
                     t = int(f.read().strip())
                 self.dashboard_win.switch_tab(t)
+                self.cancel_hide_timer()
                 self.dashboard_win.open_animated(pinned=True)
         except Exception:
             pass
