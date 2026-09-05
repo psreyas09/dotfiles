@@ -230,8 +230,17 @@ def set_power_profile(profile):
     async_cmd(f'busctl set-property net.hadess.PowerProfiles /net/hadess/PowerProfiles net.hadess.PowerProfiles ActiveProfile s "{profile}"')
 
 ENVYCONTROL_BIN = "/home/sreyas/.local/bin/envycontrol"
+GRAPHICS_SWITCH_LOCK = threading.Lock()
+GRAPHICS_SWITCH_IN_PROGRESS = False
+GRAPHICS_SWITCH_STATUS = ""
 
-def get_graphics_mode():
+def get_configured_graphics_mode():
+    if os.path.exists("/etc/modprobe.d/blacklist-nvidia.conf") and (os.path.exists("/etc/udev/rules.d/50-remove-nvidia.rules") or os.path.exists("/lib/udev/rules.d/50-remove-nvidia.rules")):
+        return "integrated"
+    if os.path.exists("/etc/X11/xorg.conf.d/10-nvidia.conf") and os.path.exists("/etc/modprobe.d/nvidia.conf"):
+        return "nvidia"
+    if os.path.exists("/etc/modprobe.d/blacklist-nvidia.conf"):
+        return "integrated"
     try:
         res = subprocess.run([ENVYCONTROL_BIN, "-q"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
         if res.returncode == 0:
@@ -240,21 +249,32 @@ def get_graphics_mode():
                 return m
     except Exception:
         pass
-    if os.path.exists("/etc/modprobe.d/blacklist-nvidia.conf"):
-        return "integrated"
     return "hybrid"
 
+def get_running_session_mode():
+    if os.path.exists("/sys/module/nvidia"):
+        return "hybrid"
+    return "integrated"
+
+def get_graphics_mode():
+    return get_configured_graphics_mode()
+
 def get_gpu_status_info():
-    mode = get_graphics_mode()
+    configured_mode = get_configured_graphics_mode()
+    session_mode = get_running_session_mode()
+    pending = (configured_mode != session_mode)
     info = {
-        "mode": mode,
+        "mode": configured_mode,
+        "configured_mode": configured_mode,
+        "session_mode": session_mode,
+        "pending": pending,
         "igpu": "AMD Radeon Vega Series (Renoir)",
         "dgpu": "NVIDIA GeForce GTX 1650 Mobile",
         "dgpu_status": "Unknown",
         "dgpu_power": ""
     }
     pci_status_path = "/sys/bus/pci/devices/0000:01:00.0/power/runtime_status"
-    if mode == "integrated":
+    if session_mode == "integrated":
         info["dgpu_status"] = "Powered Off / Disabled"
         info["dgpu_power"] = "0W (Maximum Battery Life)"
     elif os.path.exists(pci_status_path):
@@ -275,36 +295,83 @@ def get_gpu_status_info():
         info["dgpu_status"] = "Offline"
     return info
 
-def set_graphics_mode(target_mode, callback=None):
+def set_graphics_mode(target_mode, on_progress=None, callback=None):
+    global GRAPHICS_SWITCH_IN_PROGRESS, GRAPHICS_SWITCH_STATUS
+    if GRAPHICS_SWITCH_IN_PROGRESS:
+        if callback:
+            GLib.idle_add(callback, False, get_configured_graphics_mode(), "Another graphics switch is already running.")
+        return
+
     def worker():
-        success = False
-        err_msg = ""
-        args = [ENVYCONTROL_BIN, "-s", target_mode]
-        if target_mode == "hybrid":
-            args += ["--rtd3", "2"]
+        global GRAPHICS_SWITCH_IN_PROGRESS, GRAPHICS_SWITCH_STATUS
+        with GRAPHICS_SWITCH_LOCK:
+            GRAPHICS_SWITCH_IN_PROGRESS = True
+            GRAPHICS_SWITCH_STATUS = "Starting configuration..."
+            success = False
+            err_msg = ""
+            args = [ENVYCONTROL_BIN, "-s", target_mode]
+            if target_mode == "hybrid":
+                args += ["--rtd3", "2"]
 
-        try:
-            res = subprocess.run(["sudo", "-n"] + args,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
-            if res.returncode == 0:
-                success = True
-        except Exception:
-            pass
+            def update_msg(msg):
+                global GRAPHICS_SWITCH_STATUS
+                GRAPHICS_SWITCH_STATUS = msg
+                if on_progress:
+                    GLib.idle_add(on_progress, msg)
 
-        if not success:
             try:
-                res = subprocess.run(["pkexec"] + args,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+                # Test passwordless sudo
+                res = subprocess.run(["sudo", "-n"] + args,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=90)
                 if res.returncode == 0:
                     success = True
-                else:
-                    err_msg = res.stderr.strip() or res.stdout.strip() or "Authorization cancelled"
-            except Exception as e:
-                err_msg = str(e)
+            except Exception:
+                pass
 
-        current = get_graphics_mode()
-        if callback:
-            GLib.idle_add(callback, success, current, err_msg)
+            if not success:
+                try:
+                    update_msg("Authenticating with system permissions...")
+                    proc = subprocess.Popen(
+                        ["pkexec"] + args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1
+                    )
+
+                    if proc.stdout:
+                        for line in iter(proc.stdout.readline, ""):
+                            line = line.strip()
+                            if not line:
+                                continue
+                            if "Switching to" in line:
+                                update_msg(f"Configuring kernel drivers for {target_mode.title()} mode...")
+                            elif "initramfs" in line:
+                                update_msg("Updating boot image with dracut (~15-20s)...")
+                            elif "completed successfully" in line:
+                                update_msg("Graphics configuration updated successfully!")
+
+                    proc.wait(timeout=240)
+                    if proc.returncode == 0:
+                        success = True
+                    else:
+                        stderr_out = proc.stderr.read().strip() if proc.stderr else ""
+                        if proc.returncode in (126, 127) or "cancelled" in stderr_out.lower():
+                            err_msg = "Authorization was cancelled."
+                        else:
+                            err_msg = stderr_out or f"Operation exited with code {proc.returncode}"
+                except subprocess.TimeoutExpired:
+                    err_msg = "Operation timed out."
+                except Exception as e:
+                    err_msg = str(e)
+            else:
+                update_msg("Configuration completed successfully!")
+
+            GRAPHICS_SWITCH_IN_PROGRESS = False
+            GRAPHICS_SWITCH_STATUS = ""
+            current = get_configured_graphics_mode()
+            if callback:
+                GLib.idle_add(callback, success, current, err_msg)
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -609,7 +676,7 @@ class NiriSettingsApp(Gtk.Window):
             transient_for=self,
             flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT
         )
-        dlg.set_default_size(520, 260)
+        dlg.set_default_size(540, 260)
         box = dlg.get_content_area()
         box.set_spacing(16)
         box.set_margin_top(22)
@@ -630,7 +697,7 @@ class NiriSettingsApp(Gtk.Window):
 
         lbl_desc = Gtk.Label(
             label=f"{mode_descriptions.get(target_mode, '')}\n\n"
-                  f"Changing graphics mode modifies kernel modules and initramfs via PolicyKit authorization. "
+                  f"Changing graphics mode updates kernel drivers and bootloader initramfs. "
                   f"A system restart is required for the new hardware configuration to take effect."
         )
         lbl_desc.set_name("row-subtitle")
@@ -644,7 +711,7 @@ class NiriSettingsApp(Gtk.Window):
         # Progress / status box
         status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         spinner = Gtk.Spinner()
-        status_lbl = Gtk.Label(label="Configuring graphics drivers and updating initramfs... Please wait.")
+        status_lbl = Gtk.Label(label="Configuring graphics drivers... Please wait.")
         status_lbl.set_name("row-subtitle")
         status_lbl.set_line_wrap(True)
         status_box.pack_start(spinner, False, False, 0)
@@ -660,43 +727,84 @@ class NiriSettingsApp(Gtk.Window):
 
         dlg.show_all()
 
+        is_running = [False]
+
         def on_response(dialog, response_id):
             if response_id in [Gtk.ResponseType.OK, Gtk.ResponseType.APPLY]:
-                btn_cancel.set_sensitive(False)
-                btn_apply_later.set_sensitive(False)
-                btn_apply_now.set_sensitive(False)
+                is_running[0] = True
                 status_box.show()
                 spinner.start()
 
-                def on_done(success, final_mode, err_msg):
-                    spinner.stop()
+                reboot_immediately = (response_id == Gtk.ResponseType.OK)
+
+                if reboot_immediately:
+                    btn_cancel.set_sensitive(False)
+                    btn_apply_later.hide()
+                    btn_apply_now.set_sensitive(False)
+                    status_lbl.set_text("Authenticating with system permissions...")
+                else:
+                    # Apply & Reboot Later: allow user to dismiss to background at any time!
+                    btn_cancel.set_label("Run in Background")
+                    btn_cancel.set_sensitive(True)
+                    btn_apply_later.hide()
+                    btn_apply_now.hide()
+                    status_lbl.set_text("Authenticating with system permissions...")
+
+                def update_progress_ui(msg):
+                    try:
+                        status_lbl.set_text(msg)
+                    except Exception:
+                        pass
+
+                def on_done_ui(success, final_mode, err_msg):
+                    try:
+                        spinner.stop()
+                    except Exception:
+                        pass
                     if success:
-                        if response_id == Gtk.ResponseType.OK:
-                            status_lbl.set_text("Graphics mode configured successfully! Rebooting system...")
+                        try:
+                            subprocess.Popen([
+                                "notify-send", "-u", "normal", "-i", "video-display",
+                                "Graphics Mode Updated",
+                                f"Switched to {target_mode.title()} mode. Please restart your computer to apply hardware changes."
+                            ])
+                        except Exception:
+                            pass
+
+                        if reboot_immediately:
+                            try:
+                                status_lbl.set_text("Graphics mode configured successfully! Rebooting system...")
+                            except Exception:
+                                pass
                             GLib.timeout_add(1500, lambda: subprocess.Popen(["systemctl", "reboot"]))
                         else:
-                            status_lbl.set_text(f"Successfully switched to {target_mode.title()} mode! Please restart your computer when convenient.")
-                            btn_cancel.set_sensitive(True)
-                            btn_cancel.set_label("Close")
-                            btn_apply_later.hide()
-                            btn_apply_now.set_sensitive(True)
-                            btn_apply_now.set_label("Reboot Now")
-                            btn_apply_now.connect("clicked", lambda *_: subprocess.Popen(["systemctl", "reboot"]))
+                            try:
+                                status_lbl.set_text(f"Successfully configured {target_mode.title()} mode! Closing...")
+                                GLib.timeout_add(1200, lambda: dialog.destroy())
+                            except Exception:
+                                pass
                             if on_complete:
                                 on_complete(True, final_mode)
                     else:
-                        status_lbl.set_text(f"Operation failed or cancelled: {err_msg}")
-                        btn_cancel.set_sensitive(True)
-                        btn_cancel.set_label("Close")
-                        btn_apply_later.set_sensitive(True)
-                        btn_apply_now.set_sensitive(True)
+                        try:
+                            status_lbl.set_text(f"Operation failed or cancelled: {err_msg}")
+                            btn_cancel.set_label("Close")
+                            btn_cancel.set_sensitive(True)
+                            btn_apply_later.show()
+                            btn_apply_later.set_sensitive(True)
+                            btn_apply_now.show()
+                            btn_apply_now.set_sensitive(True)
+                        except Exception:
+                            pass
                         if on_complete:
                             on_complete(False, final_mode)
 
-                set_graphics_mode(target_mode, on_done)
+                set_graphics_mode(target_mode, on_progress=update_progress_ui, callback=on_done_ui)
                 return True
             else:
                 dialog.destroy()
+                if is_running[0] and on_complete:
+                    on_complete(None, None)
                 return False
 
         dlg.connect("response", on_response)
@@ -1561,28 +1669,85 @@ class NiriSettingsApp(Gtk.Window):
 
         # Graphics & GPU Power Mode Card
         vbox.pack_start(Gtk.Label(label="GRAPHICS & HYBRID GPU MODE", xalign=0, name="section-caption"), False, False, 0)
+
+        gpu_info = get_gpu_status_info()
+        configured_mode = gpu_info["configured_mode"]
+        session_mode = gpu_info["session_mode"]
+        is_pending = gpu_info.get("pending", False)
+
+        # In-Progress Banner
+        if GRAPHICS_SWITCH_IN_PROGRESS:
+            in_prog_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+            in_prog_box.set_name("info-banner")
+            in_prog_box.set_margin_bottom(6)
+            spin = Gtk.Spinner()
+            spin.start()
+            in_prog_box.pack_start(spin, False, False, 0)
+            status_text = GRAPHICS_SWITCH_STATUS or "Updating drivers in background..."
+            lbl = Gtk.Label(label=f"Configuring graphics drivers: {status_text}", xalign=0)
+            lbl.set_name("row-subtitle")
+            in_prog_box.pack_start(lbl, True, True, 0)
+            vbox.pack_start(in_prog_box, False, False, 0)
+
+        # Pending Reboot Banner
+        elif is_pending:
+            target_title = configured_mode.title()
+            banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+            banner.set_name("warning-banner")
+            banner.set_margin_bottom(6)
+
+            b_icon = Gtk.Image.new_from_icon_name("software-update-available", Gtk.IconSize.LARGE_TOOLBAR)
+            banner.pack_start(b_icon, False, False, 0)
+
+            b_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+            b_title = Gtk.Label(label=f"System Restart Required for {target_title} Mode", xalign=0)
+            b_title.set_name("row-title")
+            b_desc = Gtk.Label(
+                label=f"Graphics mode is configured to {target_title}. This active session continues running on {session_mode.title()} graphics until you reboot.",
+                xalign=0
+            )
+            b_desc.set_name("row-subtitle")
+            b_desc.set_line_wrap(True)
+            b_vbox.pack_start(b_title, False, False, 0)
+            b_vbox.pack_start(b_desc, False, False, 0)
+            banner.pack_start(b_vbox, True, True, 0)
+
+            reboot_btn = Gtk.Button(label="Restart Now")
+            reboot_btn.get_style_context().add_class("suggested-action")
+            reboot_btn.connect("clicked", lambda *_: subprocess.Popen(["systemctl", "reboot"]))
+            banner.pack_end(reboot_btn, False, False, 0)
+
+            vbox.pack_start(banner, False, False, 0)
+
         gpu_card = SettingsCard()
         vbox.pack_start(gpu_card, False, False, 0)
 
-        gpu_info = get_gpu_status_info()
-        cur_mode = gpu_info["mode"]
-
         # Row 1: Hardware & Live State
         status_badge = Gtk.Label()
-        if cur_mode == "integrated":
+        if is_pending:
+            status_badge.set_name("badge-label-warning")
+            status_badge.set_text(f"{configured_mode.title()} (Restart Pending)")
+            desc_text = (
+                f"Configured: {configured_mode.title()} Mode (Restart Required to Apply)\n"
+                f"Current Session: {session_mode.title()} Mode • iGPU: {gpu_info['igpu']} • Discrete: {gpu_info['dgpu']}"
+            )
+        elif configured_mode == "integrated":
             status_badge.set_name("badge-label-muted")
             status_badge.set_text("iGPU Only (NVIDIA Off)")
-        elif cur_mode == "hybrid":
+            desc_text = f"Active: Integrated Mode • iGPU: {gpu_info['igpu']}\nDiscrete: {gpu_info['dgpu']} ({gpu_info['dgpu_status']} • {gpu_info['dgpu_power']})"
+        elif configured_mode == "hybrid":
             status_badge.set_name("badge-label-active")
             status_badge.set_text("Hybrid Active")
+            desc_text = f"Active: Hybrid Mode • iGPU: {gpu_info['igpu']}\nDiscrete: {gpu_info['dgpu']} ({gpu_info['dgpu_status']} • {gpu_info['dgpu_power']})"
         else:
             status_badge.set_name("badge-label-info")
             status_badge.set_text("NVIDIA Dedicated")
+            desc_text = f"Active: Dedicated Mode • iGPU: {gpu_info['igpu']}\nDiscrete: {gpu_info['dgpu']} ({gpu_info['dgpu_status']} • {gpu_info['dgpu_power']})"
 
         gpu_card.add_row(create_setting_row(
             "video-display",
             "Installed Graphics Processors",
-            f"Active: {cur_mode.title()} Mode • iGPU: {gpu_info['igpu']}\nDiscrete: {gpu_info['dgpu']} ({gpu_info['dgpu_status']} • {gpu_info['dgpu_power']})",
+            desc_text,
             status_badge
         ))
 
@@ -1593,25 +1758,29 @@ class NiriSettingsApp(Gtk.Window):
         mode_combo = Gtk.ComboBoxText()
         mode_combo.append("hybrid", "Hybrid (On-Demand NVIDIA PRIME)")
         mode_combo.append("integrated", "Integrated (iGPU Only • Maximum Battery)")
-        mode_combo.set_active_id(cur_mode if cur_mode in ["hybrid", "integrated"] else "hybrid")
+        mode_combo.set_active_id(configured_mode if configured_mode in ["hybrid", "integrated"] else "hybrid")
 
         apply_btn = Gtk.Button(label="Apply Mode...")
         apply_btn.set_sensitive(False)
         apply_btn.get_style_context().add_class("suggested-action")
+
+        if GRAPHICS_SWITCH_IN_PROGRESS:
+            mode_combo.set_sensitive(False)
+            apply_btn.set_sensitive(False)
 
         mode_box.pack_start(mode_combo, False, False, 0)
         mode_box.pack_start(apply_btn, False, False, 0)
 
         def on_gpu_mode_changed(combo):
             selected = combo.get_active_id()
-            active = get_graphics_mode()
-            apply_btn.set_sensitive(selected != active)
+            active = get_configured_graphics_mode()
+            apply_btn.set_sensitive(selected != active and not GRAPHICS_SWITCH_IN_PROGRESS)
 
         mode_combo.connect("changed", on_gpu_mode_changed)
 
         def on_apply_gpu_clicked(_):
             selected = mode_combo.get_active_id()
-            if selected and selected != get_graphics_mode():
+            if selected and selected != get_configured_graphics_mode():
                 self.show_graphics_switch_dialog(selected, on_complete=lambda *_: self.reload_all_state())
 
         apply_btn.connect("clicked", on_apply_gpu_clicked)
@@ -2158,6 +2327,30 @@ class NiriSettingsApp(Gtk.Window):
             font-size: 11px;
             font-weight: 700;
             color: #3498db;
+        }}
+
+        #badge-label-warning {{
+            background-color: rgba(243, 156, 18, 0.20);
+            border: 1px solid rgba(243, 156, 18, 0.45);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #f39c12;
+        }}
+
+        #warning-banner {{
+            background-color: rgba(243, 156, 18, 0.12);
+            border: 1px solid rgba(243, 156, 18, 0.35);
+            border-radius: 12px;
+            padding: 12px 16px;
+        }}
+
+        #info-banner {{
+            background-color: rgba(52, 152, 219, 0.12);
+            border: 1px solid rgba(52, 152, 219, 0.35);
+            border-radius: 12px;
+            padding: 12px 16px;
         }}
 
         #wall-preview-img {{
