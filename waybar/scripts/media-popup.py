@@ -2,6 +2,7 @@
 import os
 import sys
 import subprocess
+import json
 import time
 import math
 import cairo
@@ -898,15 +899,24 @@ class MediaPopup(Gtk.Window):
 
             item_box.pack_start(details_box, True, True, 0)
 
+            actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
             if is_active:
                 lbl_active = Gtk.Label(label="✓ Active")
                 lbl_active.set_name("popover-active-badge")
-                item_box.pack_end(lbl_active, False, False, 0)
+                actions_box.pack_start(lbl_active, False, False, 0)
             else:
                 btn_play_switch = Gtk.Button(label="󰐊 Resume")
                 btn_play_switch.set_name("popover-resume-btn")
                 btn_play_switch.connect("clicked", lambda b, i=inst, pl=p: self.on_switch_and_play(i, pl))
-                item_box.pack_end(btn_play_switch, False, False, 0)
+                actions_box.pack_start(btn_play_switch, False, False, 0)
+
+            btn_win = Gtk.Button(label="")
+            btn_win.get_style_context().add_class("popover-focus-btn")
+            btn_win.set_tooltip_text(f"Go to {name} window")
+            btn_win.connect("clicked", lambda b, pl=p: self.on_focus_player_from_popover(pl))
+            actions_box.pack_start(btn_win, False, False, 0)
+
+            item_box.pack_end(actions_box, False, False, 0)
 
             item_btn.add(item_box)
             item_btn.connect("clicked", lambda b, i=inst: self.on_select_player_from_popover(i))
@@ -926,8 +936,103 @@ class MediaPopup(Gtk.Window):
             self.player_popover.popdown()
         self.select_player_by_instance(instance, auto_resume=True)
 
+    def on_focus_player_from_popover(self, player):
+        if hasattr(self, "player_popover") and self.player_popover:
+            self.player_popover.popdown()
+        inst = self.get_player_instance(player)
+        self.select_player_by_instance(inst)
+        self.focus_player_window(player)
+
     def on_popover_closed(self, popover):
         self.player_popover = None
+
+    def on_focus_window_clicked(self, widget):
+        self.focus_player_window(self.player)
+
+    def find_niri_window_id(self, pname, pinst, art=""):
+        try:
+            out = subprocess.check_output(["niri", "msg", "--json", "windows"], text=True)
+            windows = json.loads(out)
+        except Exception:
+            return None
+
+        if not windows:
+            return None
+
+        # 1. Try matching CGroup or UserUnit from busctl for flatpaks/services
+        bus_name = f"org.mpris.MediaPlayer2.{pinst or pname}"
+        try:
+            b_out = subprocess.check_output(["busctl", "--user", "status", bus_name], text=True, stderr=subprocess.DEVNULL)
+            for line in b_out.splitlines():
+                if line.startswith("UserUnit=") or line.startswith("CGroup="):
+                    val = line.split("=", 1)[1].lower()
+                    for w in windows:
+                        app = (w.get("app_id") or "").lower()
+                        if app and app in val:
+                            return w["id"]
+        except Exception:
+            pass
+
+        # 2. Heuristic keyword matching
+        pname_l = (pname or "").lower()
+        pinst_l = (pinst or "").lower()
+        art_l = (art or "").lower()
+
+        keywords = []
+        if "zen" in pinst_l or "zen" in art_l:
+            keywords = ["zen", "firefox"]
+        elif "tauon" in pname_l:
+            keywords = ["tauon"]
+        elif "spotify" in pname_l:
+            keywords = ["spotify"]
+        elif "firefox" in pname_l:
+            keywords = ["firefox"]
+        elif "chromium" in pname_l or "chrome" in pname_l:
+            keywords = ["chrome", "chromium"]
+        elif "brave" in pname_l:
+            keywords = ["brave"]
+        elif "vlc" in pname_l:
+            keywords = ["vlc"]
+        elif "mpv" in pname_l:
+            keywords = ["mpv"]
+        else:
+            keywords = [pname_l]
+
+        for kw in keywords:
+            for w in windows:
+                app = (w.get("app_id") or "").lower()
+                title = (w.get("title") or "").lower()
+                if kw in app or kw in title:
+                    return w["id"]
+
+        return None
+
+    def focus_player_window(self, target_player=None):
+        target = target_player or self.player
+        if not target:
+            return
+
+        pname = (getattr(target.props, "player_name", "") or "").lower()
+        pinst = (getattr(target.props, "player_instance", "") or "").lower()
+        art = (target.print_metadata_prop("mpris:artUrl") or "").lower()
+
+        # Try to find window ID in Niri
+        win_id = self.find_niri_window_id(pname, pinst, art)
+        if win_id is not None:
+            try:
+                subprocess.run(["niri", "msg", "action", "focus-window", "--id", str(win_id)], check=True)
+            except Exception:
+                pass
+
+        # Also send MPRIS Raise via DBus as complementary call
+        bus_name = f"org.mpris.MediaPlayer2.{pinst or pname}"
+        try:
+            subprocess.run(["busctl", "--user", "call", bus_name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "Raise"], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # Close the popup animated
+        self.close_animated()
 
     def on_metadata_changed(self, player, metadata):
         inst = self.get_player_instance(player)
@@ -1010,6 +1115,14 @@ class MediaPopup(Gtk.Window):
         self.player_counter_label = Gtk.Label(label="")
         self.player_counter_label.set_name("player-counter-label")
         self.switcher_box.pack_start(self.player_counter_label, False, False, 2)
+
+        # Go to Player Window Button (focus window in Niri / MPRIS raise)
+        self.btn_open_window = Gtk.Button(label="")
+        self.btn_open_window.set_name("btn-open-window")
+        self.btn_open_window.set_relief(Gtk.ReliefStyle.NONE)
+        self.btn_open_window.set_tooltip_text("Go to player window")
+        self.btn_open_window.connect("clicked", self.on_focus_window_clicked)
+        header_row.pack_start(self.btn_open_window, False, False, 0)
 
         btn_close = Gtk.Button(label="󰅖")
         btn_close.set_name("btn-close")
@@ -1179,10 +1292,17 @@ class MediaPopup(Gtk.Window):
             self.btn_player_prev.set_visible(False)
             self.btn_player_next.set_visible(False)
             self.player_counter_label.set_text("")
+            if hasattr(self, "btn_open_window"):
+                self.btn_open_window.set_sensitive(False)
+                self.btn_open_window.set_visible(False)
             return
 
         icon, name = self.get_player_info(self.player)
         self.app_badge_label.set_text(f"{icon} {name}")
+        if hasattr(self, "btn_open_window"):
+            self.btn_open_window.set_sensitive(True)
+            self.btn_open_window.set_visible(True)
+            self.btn_open_window.set_tooltip_text(f"Go to {name} window")
 
         count = len(self.player_order)
         if count > 1:
@@ -1489,6 +1609,44 @@ class MediaPopup(Gtk.Window):
 
         #popover-resume-btn:hover {{
             background-color: alpha(@accent-purple, 0.85);
+        }}
+
+        #btn-open-window {{
+            background-color: alpha(@accent-purple, 0.12);
+            border: 1px solid alpha(@accent-purple, 0.28);
+            border-radius: 9999px;
+            color: @accent-purple;
+            font-size: 13px;
+            min-width: 26px;
+            min-height: 26px;
+            padding: 2px 7px;
+            margin: 0;
+        }}
+
+        #btn-open-window:hover {{
+            background-color: alpha(@accent-purple, 0.32);
+            color: @fg-color;
+            border-color: alpha(@accent-purple, 0.60);
+        }}
+
+        #btn-open-window:active {{
+            background-color: alpha(@accent-purple, 0.50);
+        }}
+
+        .popover-focus-btn {{
+            background-color: alpha(@accent-purple, 0.10);
+            border: 1px solid alpha(@accent-purple, 0.28);
+            border-radius: 6px;
+            color: @accent-purple;
+            font-size: 12px;
+            padding: 2px 6px;
+            margin-left: 4px;
+        }}
+
+        .popover-focus-btn:hover {{
+            background-color: alpha(@accent-purple, 0.30);
+            color: @fg-color;
+            border-color: alpha(@accent-purple, 0.55);
         }}
 
         #media-title {{
