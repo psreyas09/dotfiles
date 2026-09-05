@@ -4,6 +4,7 @@ import sys
 import time
 import math
 import cairo
+import random
 import signal
 import urllib.request
 import urllib.parse
@@ -289,11 +290,321 @@ class MaterialWavySeekBar(Gtk.DrawingArea):
         cr.fill()
 
 
+class BongoCatVisualizer(Gtk.DrawingArea):
+    """
+    Animated Bongo Cat with dynamic reactive audio equalizer bars:
+    - Left/Right paws alternate drumming to music beat when playing.
+    - Head bobs to rhythm.
+    - Closed happy eyes when playing, sleepy eyes with paws resting when paused.
+    - Floating musical notes (♪, ♫, ♬) drift upwards.
+    - Dynamic 12-band audio spectrum visualizer across the bottom using system theme gradient.
+    - Interactive: click Bongo Cat for a playful rapid drumroll and heart burst!
+    """
+    def __init__(self):
+        super().__init__()
+        self.set_size_request(125, 105)
+        self.set_can_focus(False)
+        self.set_tooltip_text("Bongo Cat ~ Click to drumroll!")
+
+        self.phase = 0.0
+        self.is_playing = False
+        self.drumroll_time = 0.0
+        self.notes = []
+        self.bars = [0.08] * 12
+        self.colors = parse_theme_colors()
+        self.last_frame_time = None
+
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self.on_clicked)
+        self.connect("draw", self.on_draw)
+
+        self.add_tick_callback(self.on_tick)
+
+    def set_playing(self, is_playing):
+        self.is_playing = is_playing
+
+    def on_clicked(self, widget, event):
+        if event.button == 1:
+            self.drumroll_time = 1.4
+            for _ in range(2):
+                char = random.choice(['♥', '♪', '♫', '♬'])
+                self.notes.append([random.uniform(-14, 14), 0.0, 1.0, char])
+            self.queue_draw()
+            return True
+        return False
+
+    def on_tick(self, widget, frame_clock):
+        now = frame_clock.get_frame_time() / 1_000_000
+        if self.last_frame_time is None:
+            self.last_frame_time = now
+        dt = min(0.05, now - self.last_frame_time)
+        self.last_frame_time = now
+
+        need_redraw = False
+
+        if self.is_playing or self.drumroll_time > 0:
+            speed = 9.0 if self.drumroll_time > 0 else 4.6
+            self.phase = (self.phase + speed * dt) % (2.0 * math.pi)
+            if self.drumroll_time > 0:
+                self.drumroll_time = max(0.0, self.drumroll_time - dt)
+
+            # Animate dynamic harmonic visualizer bars
+            for i in range(len(self.bars)):
+                h1 = math.sin(self.phase * 1.4 + i * 0.75)**2
+                h2 = math.cos(self.phase * 0.85 + i * 0.45)**2
+                target = 0.18 + 0.72 * (h1 * 0.6 + h2 * 0.4)
+                if self.drumroll_time > 0:
+                    target = min(1.0, target * 1.3)
+                self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
+
+            # Random floating music note
+            if random.random() < 0.045 and len(self.notes) < 4:
+                char = random.choice(['♪', '♫', '♬'])
+                self.notes.append([random.uniform(-16, 16), 0.0, 1.0, char])
+
+            need_redraw = True
+        else:
+            # Decay visualizer bars to resting baseline
+            decaying = False
+            for i in range(len(self.bars)):
+                if self.bars[i] > 0.04:
+                    self.bars[i] += (0.03 - self.bars[i]) * min(1.0, dt * 8.0)
+                    decaying = True
+            if decaying:
+                need_redraw = True
+
+        # Float and fade floating music notes
+        if self.notes:
+            alive_notes = []
+            for n in self.notes:
+                n[1] -= dt * 26.0
+                n[2] -= dt * 0.75
+                if n[2] > 0:
+                    alive_notes.append(n)
+            self.notes = alive_notes
+            need_redraw = True
+
+        if need_redraw:
+            self.queue_draw()
+
+        return True
+
+    def on_draw(self, widget, cr):
+        alloc = self.get_allocation()
+        w = alloc.width
+        h = alloc.height
+
+        accent = self.colors.get('accent-purple', (0.7, 0.4, 0.8, 1.0))
+        accent_blue = self.colors.get('accent-blue', (0.35, 0.55, 0.85, 1.0))
+
+        # 1. Background Equalizer Bars
+        num_bars = len(self.bars)
+        bar_w = 4.0
+        gap = 3.5
+        total_w = num_bars * bar_w + (num_bars - 1) * gap
+        start_x = (w - total_w) / 2.0
+        base_y = h - 6.0
+
+        for i, val in enumerate(self.bars):
+            bx = start_x + i * (bar_w + gap)
+            bh = max(2.5, val * 24.0)
+            by = base_y - bh
+
+            t = i / max(1, num_bars - 1)
+            r = accent[0] * (1.0 - t) + accent_blue[0] * t
+            g = accent[1] * (1.0 - t) + accent_blue[1] * t
+            b = accent[2] * (1.0 - t) + accent_blue[2] * t
+
+            cr.set_source_rgba(r, g, b, 0.55)
+            rad = 2.0
+            cr.new_sub_path()
+            cr.arc(bx + rad, by + rad, rad, math.pi, 3 * math.pi / 2)
+            cr.arc(bx + bar_w - rad, by + rad, rad, 3 * math.pi / 2, 2 * math.pi)
+            cr.arc(bx + bar_w - rad, base_y - rad, rad, 0, math.pi / 2)
+            cr.arc(bx + rad, base_y - rad, rad, math.pi / 2, math.pi)
+            cr.close_path()
+            cr.fill()
+
+        # 2. Cat Coordinates
+        cx = w / 2.0
+        head_bob = math.sin(self.phase * 2.0) * 1.6 if (self.is_playing or self.drumroll_time > 0) else 0.0
+        cy = 43.0 + head_bob
+
+        cat_white = (0.98, 0.98, 1.0)
+        cat_outline = (0.16, 0.16, 0.20, 0.95)
+        blush_pink = (1.0, 0.52, 0.65, 0.55)
+        inner_ear = (1.0, 0.68, 0.78, 0.8)
+        bongo_body = (0.32, 0.24, 0.22, 0.95)
+        bongo_rim = (0.50, 0.38, 0.32, 1.0)
+        bongo_top = (0.92, 0.88, 0.80, 1.0)
+
+        # 3. Body
+        cr.save()
+        cr.translate(cx, cy + 18)
+        cr.scale(32, 20)
+        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
+        cr.restore()
+        cr.set_source_rgb(*cat_white)
+        cr.fill_preserve()
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(2.0)
+        cr.stroke()
+
+        # 4. Ears
+        for side in (-1, 1):
+            cr.move_to(cx + side * 22, cy - 8)
+            cr.line_to(cx + side * 30, cy - 30)
+            cr.line_to(cx + side * 10, cy - 20)
+            cr.close_path()
+            cr.set_source_rgb(*cat_white)
+            cr.fill_preserve()
+            cr.set_source_rgba(*cat_outline)
+            cr.set_line_width(2.0)
+            cr.stroke()
+
+            cr.move_to(cx + side * 20, cy - 10)
+            cr.line_to(cx + side * 27, cy - 26)
+            cr.line_to(cx + side * 12, cy - 19)
+            cr.close_path()
+            cr.set_source_rgba(*inner_ear)
+            cr.fill()
+
+        # 5. Head
+        cr.save()
+        cr.translate(cx, cy - 4)
+        cr.scale(28, 24)
+        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
+        cr.restore()
+        cr.set_source_rgb(*cat_white)
+        cr.fill_preserve()
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(2.2)
+        cr.stroke()
+
+        # 6. Face
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(2.0)
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        if self.is_playing or self.drumroll_time > 0:
+            for side in (-1, 1):
+                ex = cx + side * 11
+                ey = cy - 6
+                cr.arc(ex, ey, 4.0, math.pi * 1.1, math.pi * 1.9)
+                cr.stroke()
+        else:
+            for side in (-1, 1):
+                ex = cx + side * 11
+                ey = cy - 6
+                cr.move_to(ex - 4, ey)
+                cr.line_to(ex + 4, ey)
+                cr.stroke()
+
+        # Blush
+        cr.set_source_rgba(*blush_pink)
+        cr.arc(cx - 15, cy + 2, 4.2, 0, 2 * math.pi)
+        cr.fill()
+        cr.arc(cx + 15, cy + 2, 4.2, 0, 2 * math.pi)
+        cr.fill()
+
+        # Mouth :3
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(1.6)
+        cr.arc(cx - 2.8, cy + 3.5, 2.8, 0, math.pi)
+        cr.stroke()
+        cr.arc(cx + 2.8, cy + 3.5, 2.8, 0, math.pi)
+        cr.stroke()
+
+        # 7. Bongos
+        drum_y = cy + 26
+        for side in (-1, 1):
+            dx = cx + side * 18
+            cr.save()
+            cr.translate(dx, drum_y + 6)
+            cr.scale(13, 10)
+            cr.arc(0, 0, 1.0, 0, math.pi)
+            cr.restore()
+            cr.set_source_rgba(*bongo_body)
+            cr.fill_preserve()
+            cr.set_source_rgba(*cat_outline)
+            cr.set_line_width(1.5)
+            cr.stroke()
+
+            cr.save()
+            cr.translate(dx, drum_y)
+            cr.scale(14, 5.5)
+            cr.arc(0, 0, 1.0, 0, 2 * math.pi)
+            cr.restore()
+            cr.set_source_rgba(*bongo_top)
+            cr.fill_preserve()
+            cr.set_source_rgba(*bongo_rim)
+            cr.set_line_width(1.8)
+            cr.stroke()
+
+        # 8. Paws
+        left_down = (math.sin(self.phase) >= 0) if (self.is_playing or self.drumroll_time > 0) else True
+        right_down = (math.sin(self.phase) < 0) if (self.is_playing or self.drumroll_time > 0) else True
+
+        # Left Paw
+        lx = cx - 18
+        ly = drum_y + 1 if left_down else drum_y - 9
+        cr.save()
+        cr.translate(lx, ly)
+        cr.scale(7.5, 5.5)
+        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
+        cr.restore()
+        cr.set_source_rgb(*cat_white)
+        cr.fill_preserve()
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(1.8)
+        cr.stroke()
+        cr.move_to(cx - 24, cy + 12)
+        cr.curve_to(cx - 24, ly - 2, lx - 4, ly - 2, lx - 4, ly)
+        cr.set_line_width(2.0)
+        cr.stroke()
+
+        # Right Paw
+        rx = cx + 18
+        ry = drum_y + 1 if right_down else drum_y - 9
+        cr.save()
+        cr.translate(rx, ry)
+        cr.scale(7.5, 5.5)
+        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
+        cr.restore()
+        cr.set_source_rgb(*cat_white)
+        cr.fill_preserve()
+        cr.set_source_rgba(*cat_outline)
+        cr.set_line_width(1.8)
+        cr.stroke()
+        cr.move_to(cx + 24, cy + 12)
+        cr.curve_to(cx + 24, ry - 2, rx + 4, ry - 2, rx + 4, ry)
+        cr.set_line_width(2.0)
+        cr.stroke()
+
+        # Tap star ripple
+        if self.is_playing or self.drumroll_time > 0:
+            tap_side = -1 if left_down else 1
+            tx = cx + tap_side * 18
+            ty = drum_y
+            cr.set_source_rgba(1.0, 0.85, 0.35, 0.75)
+            cr.arc(tx, ty - 2, 4.2, 0, 2 * math.pi)
+            cr.stroke()
+
+        # 9. Floating Notes
+        cr.select_font_face('Sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        cr.set_font_size(13.0)
+        for nx, ny, alpha, char in self.notes:
+            cr.set_source_rgba(accent[0], accent[1], accent[2], alpha * 0.9)
+            cr.move_to(cx + nx, cy - 25 + ny)
+            cr.show_text(char)
+
+        return False
+
+
 class MediaPopup(Gtk.Window):
     def __init__(self):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.set_title("Waybar Media Overview")
-        self.set_default_size(360, 140)
+        self.set_default_size(520, 140)
         self.set_resizable(False)
 
         # Layer Shell Setup
@@ -306,7 +617,7 @@ class MediaPopup(Gtk.Window):
         # Position directly underneath group/media with an 8px gap
         self.target_margin_top = 8
         self.start_margin_top = -6
-        self.target_margin_right = 470
+        self.target_margin_right = 380
 
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, self.target_margin_right)
@@ -519,6 +830,15 @@ class MediaPopup(Gtk.Window):
         self.btn_next.connect("clicked", self.on_next_clicked)
         ctrl_row.pack_start(self.btn_next, False, False, 0)
 
+        # Right Column: Bongo Cat + Dynamic Audio Visualizer
+        bongo_frame = Gtk.Frame()
+        bongo_frame.set_name("bongo-frame")
+        bongo_frame.set_shadow_type(Gtk.ShadowType.NONE)
+        bongo_frame.set_valign(Gtk.Align.CENTER)
+        self.bongo_cat = BongoCatVisualizer()
+        bongo_frame.add(self.bongo_cat)
+        self.card.pack_end(bongo_frame, False, False, 0)
+
     def on_prev_clicked(self, btn):
         if self.player:
             self.player.previous()
@@ -565,6 +885,8 @@ class MediaPopup(Gtk.Window):
             self.seekbar.set_value(0)
             self.time_cur.set_text("0:00")
             self.time_tot.set_text("0:00")
+            if hasattr(self, "bongo_cat"):
+                self.bongo_cat.set_playing(False)
             return
 
         # Title
@@ -596,6 +918,8 @@ class MediaPopup(Gtk.Window):
         if not self.player:
             self.btn_play.set_label("󰐎")
             self.seekbar.set_playing(False)
+            if hasattr(self, "bongo_cat"):
+                self.bongo_cat.set_playing(False)
             return
         status = self.player.get_property("playback-status")
         is_playing = (status == Playerctl.PlaybackStatus.PLAYING)
@@ -604,6 +928,8 @@ class MediaPopup(Gtk.Window):
         else:
             self.btn_play.set_label("󰐊")
         self.seekbar.set_playing(is_playing)
+        if hasattr(self, "bongo_cat"):
+            self.bongo_cat.set_playing(is_playing)
 
     def update_seekbar_range(self):
         if not self.player:
@@ -770,6 +1096,18 @@ class MediaPopup(Gtk.Window):
 
         #media-play-btn:hover {{
             background-color: alpha(@accent-purple, 0.85);
+        }}
+
+        #bongo-frame {{
+            background-color: alpha(@bg-color, 0.45);
+            border: 1px solid alpha(@border-color, 0.35);
+            border-radius: 12px;
+            padding: 2px 4px;
+        }}
+
+        #bongo-frame:hover {{
+            border-color: alpha(@accent-purple, 0.55);
+            background-color: alpha(@bg-color, 0.65);
         }}
         """
         css_provider.load_from_data(css.encode('utf-8'))
