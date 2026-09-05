@@ -13,7 +13,9 @@ import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
 gi.require_version('Playerctl', '2.0')
-from gi.repository import Gtk, Gdk, GtkLayerShell, Playerctl, GLib, GdkPixbuf
+gi.require_version('Pango', '1.0')
+gi.require_version('PangoCairo', '1.0')
+from gi.repository import Gtk, Gdk, GtkLayerShell, Playerctl, GLib, GdkPixbuf, Pango, PangoCairo
 
 PID_FILE = "/tmp/waybar_media_popup.pid"
 
@@ -293,16 +295,16 @@ class MaterialWavySeekBar(Gtk.DrawingArea):
 class BongoCatVisualizer(Gtk.DrawingArea):
     """
     Animated Bongo Cat with dynamic reactive audio equalizer bars:
-    - Left/Right paws alternate drumming to music beat when playing.
-    - Head bobs to rhythm.
-    - Closed happy eyes when playing, sleepy eyes with paws resting when paused.
-    - Floating musical notes (♪, ♫, ♬) drift upwards.
-    - Dynamic 12-band audio spectrum visualizer across the bottom using system theme gradient.
+    - Uses authentic Caelestia Shell Bongo Cat frames (bongo_0.png, bongo_1.png, bongo_rest.png).
+    - Left/Right paws alternate drumming rapidly to music beat when playing.
+    - Peaceful resting paws (bongo_rest.png) when paused with zero idle CPU.
+    - Floating musical notes (♪, ♫, ♬) drift upwards with crisp Pango glyphs.
+    - Dynamic 14-band audio spectrum visualizer across the bottom using Wallust theme gradients.
     - Interactive: click Bongo Cat for a playful rapid drumroll and heart burst!
     """
     def __init__(self):
         super().__init__()
-        self.set_size_request(125, 105)
+        self.set_size_request(150, 110)
         self.set_can_focus(False)
         self.set_tooltip_text("Bongo Cat ~ Click to drumroll!")
 
@@ -310,15 +312,36 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         self.is_playing = False
         self.drumroll_time = 0.0
         self.notes = []
-        self.bars = [0.08] * 12
+        self.bars = [0.08] * 14
         self.colors = parse_theme_colors()
         self.last_frame_time = None
+
+        # Load authentic Caelestia Bongo Cat frames
+        self.pix_f0 = None
+        self.pix_f1 = None
+        self.pix_rest = None
+        self._load_bongo_pixbufs(130, 82)
 
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self.on_clicked)
         self.connect("draw", self.on_draw)
 
         self.add_tick_callback(self.on_tick)
+
+    def _load_bongo_pixbufs(self, target_w, target_h):
+        asset_dir = os.path.expanduser("~/.config/waybar/assets")
+        p0 = os.path.join(asset_dir, "bongo_0.png")
+        p1 = os.path.join(asset_dir, "bongo_1.png")
+        pr = os.path.join(asset_dir, "bongo_rest.png")
+        try:
+            if os.path.exists(p0):
+                self.pix_f0 = GdkPixbuf.Pixbuf.new_from_file_at_scale(p0, target_w, target_h, True)
+            if os.path.exists(p1):
+                self.pix_f1 = GdkPixbuf.Pixbuf.new_from_file_at_scale(p1, target_w, target_h, True)
+            if os.path.exists(pr):
+                self.pix_rest = GdkPixbuf.Pixbuf.new_from_file_at_scale(pr, target_w, target_h, True)
+        except Exception:
+            pass
 
     def set_playing(self, is_playing):
         self.is_playing = is_playing
@@ -328,7 +351,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             self.drumroll_time = 1.4
             for _ in range(2):
                 char = random.choice(['♥', '♪', '♫', '♬'])
-                self.notes.append([random.uniform(-14, 14), 0.0, 1.0, char])
+                self.notes.append([random.uniform(-18, 18), 0.0, 1.0, char])
             self.queue_draw()
             return True
         return False
@@ -343,24 +366,24 @@ class BongoCatVisualizer(Gtk.DrawingArea):
         need_redraw = False
 
         if self.is_playing or self.drumroll_time > 0:
-            speed = 9.0 if self.drumroll_time > 0 else 4.6
+            speed = 9.0 if self.drumroll_time > 0 else 5.2
             self.phase = (self.phase + speed * dt) % (2.0 * math.pi)
             if self.drumroll_time > 0:
                 self.drumroll_time = max(0.0, self.drumroll_time - dt)
 
             # Animate dynamic harmonic visualizer bars
             for i in range(len(self.bars)):
-                h1 = math.sin(self.phase * 1.4 + i * 0.75)**2
-                h2 = math.cos(self.phase * 0.85 + i * 0.45)**2
-                target = 0.18 + 0.72 * (h1 * 0.6 + h2 * 0.4)
+                h1 = math.sin(self.phase * 1.5 + i * 0.7)**2
+                h2 = math.cos(self.phase * 0.9 + i * 0.4)**2
+                target = 0.20 + 0.75 * (h1 * 0.6 + h2 * 0.4)
                 if self.drumroll_time > 0:
-                    target = min(1.0, target * 1.3)
+                    target = min(1.0, target * 1.35)
                 self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
 
             # Random floating music note
             if random.random() < 0.045 and len(self.notes) < 4:
                 char = random.choice(['♪', '♫', '♬'])
-                self.notes.append([random.uniform(-16, 16), 0.0, 1.0, char])
+                self.notes.append([random.uniform(-18, 18), 0.0, 1.0, char])
 
             need_redraw = True
         else:
@@ -368,7 +391,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             decaying = False
             for i in range(len(self.bars)):
                 if self.bars[i] > 0.04:
-                    self.bars[i] += (0.03 - self.bars[i]) * min(1.0, dt * 8.0)
+                    self.bars[i] += (0.02 - self.bars[i]) * min(1.0, dt * 8.0)
                     decaying = True
             if decaying:
                 need_redraw = True
@@ -399,7 +422,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
 
         # 1. Background Equalizer Bars
         num_bars = len(self.bars)
-        bar_w = 4.0
+        bar_w = 5.0
         gap = 3.5
         total_w = num_bars * bar_w + (num_bars - 1) * gap
         start_x = (w - total_w) / 2.0
@@ -407,7 +430,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
 
         for i, val in enumerate(self.bars):
             bx = start_x + i * (bar_w + gap)
-            bh = max(2.5, val * 24.0)
+            bh = max(3.0, val * 26.0)
             by = base_y - bh
 
             t = i / max(1, num_bars - 1)
@@ -415,7 +438,7 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             g = accent[1] * (1.0 - t) + accent_blue[1] * t
             b = accent[2] * (1.0 - t) + accent_blue[2] * t
 
-            cr.set_source_rgba(r, g, b, 0.55)
+            cr.set_source_rgba(r, g, b, 0.65)
             rad = 2.0
             cr.new_sub_path()
             cr.arc(bx + rad, by + rad, rad, math.pi, 3 * math.pi / 2)
@@ -425,177 +448,34 @@ class BongoCatVisualizer(Gtk.DrawingArea):
             cr.close_path()
             cr.fill()
 
-        # 2. Cat Coordinates
-        cx = w / 2.0
-        head_bob = math.sin(self.phase * 2.0) * 1.6 if (self.is_playing or self.drumroll_time > 0) else 0.0
-        cy = 43.0 + head_bob
-
-        cat_white = (0.98, 0.98, 1.0)
-        cat_outline = (0.16, 0.16, 0.20, 0.95)
-        blush_pink = (1.0, 0.52, 0.65, 0.55)
-        inner_ear = (1.0, 0.68, 0.78, 0.8)
-        bongo_body = (0.32, 0.24, 0.22, 0.95)
-        bongo_rim = (0.50, 0.38, 0.32, 1.0)
-        bongo_top = (0.92, 0.88, 0.80, 1.0)
-
-        # 3. Body
-        cr.save()
-        cr.translate(cx, cy + 18)
-        cr.scale(32, 20)
-        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
-        cr.restore()
-        cr.set_source_rgb(*cat_white)
-        cr.fill_preserve()
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(2.0)
-        cr.stroke()
-
-        # 4. Ears
-        for side in (-1, 1):
-            cr.move_to(cx + side * 22, cy - 8)
-            cr.line_to(cx + side * 30, cy - 30)
-            cr.line_to(cx + side * 10, cy - 20)
-            cr.close_path()
-            cr.set_source_rgb(*cat_white)
-            cr.fill_preserve()
-            cr.set_source_rgba(*cat_outline)
-            cr.set_line_width(2.0)
-            cr.stroke()
-
-            cr.move_to(cx + side * 20, cy - 10)
-            cr.line_to(cx + side * 27, cy - 26)
-            cr.line_to(cx + side * 12, cy - 19)
-            cr.close_path()
-            cr.set_source_rgba(*inner_ear)
-            cr.fill()
-
-        # 5. Head
-        cr.save()
-        cr.translate(cx, cy - 4)
-        cr.scale(28, 24)
-        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
-        cr.restore()
-        cr.set_source_rgb(*cat_white)
-        cr.fill_preserve()
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(2.2)
-        cr.stroke()
-
-        # 6. Face
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(2.0)
-        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        # 2. Authentic Caelestia Bongo Cat
+        cat_pix = None
         if self.is_playing or self.drumroll_time > 0:
-            for side in (-1, 1):
-                ex = cx + side * 11
-                ey = cy - 6
-                cr.arc(ex, ey, 4.0, math.pi * 1.1, math.pi * 1.9)
-                cr.stroke()
+            is_f0 = (math.sin(self.phase * 2.0) >= 0)
+            cat_pix = self.pix_f0 if is_f0 else self.pix_f1
         else:
-            for side in (-1, 1):
-                ex = cx + side * 11
-                ey = cy - 6
-                cr.move_to(ex - 4, ey)
-                cr.line_to(ex + 4, ey)
-                cr.stroke()
+            cat_pix = self.pix_rest or self.pix_f0
 
-        # Blush
-        cr.set_source_rgba(*blush_pink)
-        cr.arc(cx - 15, cy + 2, 4.2, 0, 2 * math.pi)
-        cr.fill()
-        cr.arc(cx + 15, cy + 2, 4.2, 0, 2 * math.pi)
-        cr.fill()
+        if cat_pix:
+            cat_w = cat_pix.get_width()
+            cat_h = cat_pix.get_height()
+            cat_x = (w - cat_w) / 2.0
+            bob = math.sin(self.phase * 4.0) * 1.5 if (self.is_playing or self.drumroll_time > 0) else 0.0
+            cat_y = 6.0 + bob
+            Gdk.cairo_set_source_pixbuf(cr, cat_pix, cat_x, cat_y)
+            cr.paint()
 
-        # Mouth :3
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(1.6)
-        cr.arc(cx - 2.8, cy + 3.5, 2.8, 0, math.pi)
-        cr.stroke()
-        cr.arc(cx + 2.8, cy + 3.5, 2.8, 0, math.pi)
-        cr.stroke()
+        # 3. Floating Notes (♪, ♫, ♬, ♥)
+        if self.notes:
+            layout = self.create_pango_layout("")
+            desc = Pango.FontDescription("Symbols Nerd Font, DejaVu Sans 11")
+            layout.set_font_description(desc)
 
-        # 7. Bongos
-        drum_y = cy + 26
-        for side in (-1, 1):
-            dx = cx + side * 18
-            cr.save()
-            cr.translate(dx, drum_y + 6)
-            cr.scale(13, 10)
-            cr.arc(0, 0, 1.0, 0, math.pi)
-            cr.restore()
-            cr.set_source_rgba(*bongo_body)
-            cr.fill_preserve()
-            cr.set_source_rgba(*cat_outline)
-            cr.set_line_width(1.5)
-            cr.stroke()
-
-            cr.save()
-            cr.translate(dx, drum_y)
-            cr.scale(14, 5.5)
-            cr.arc(0, 0, 1.0, 0, 2 * math.pi)
-            cr.restore()
-            cr.set_source_rgba(*bongo_top)
-            cr.fill_preserve()
-            cr.set_source_rgba(*bongo_rim)
-            cr.set_line_width(1.8)
-            cr.stroke()
-
-        # 8. Paws
-        left_down = (math.sin(self.phase) >= 0) if (self.is_playing or self.drumroll_time > 0) else True
-        right_down = (math.sin(self.phase) < 0) if (self.is_playing or self.drumroll_time > 0) else True
-
-        # Left Paw
-        lx = cx - 18
-        ly = drum_y + 1 if left_down else drum_y - 9
-        cr.save()
-        cr.translate(lx, ly)
-        cr.scale(7.5, 5.5)
-        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
-        cr.restore()
-        cr.set_source_rgb(*cat_white)
-        cr.fill_preserve()
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(1.8)
-        cr.stroke()
-        cr.move_to(cx - 24, cy + 12)
-        cr.curve_to(cx - 24, ly - 2, lx - 4, ly - 2, lx - 4, ly)
-        cr.set_line_width(2.0)
-        cr.stroke()
-
-        # Right Paw
-        rx = cx + 18
-        ry = drum_y + 1 if right_down else drum_y - 9
-        cr.save()
-        cr.translate(rx, ry)
-        cr.scale(7.5, 5.5)
-        cr.arc(0, 0, 1.0, 0, 2 * math.pi)
-        cr.restore()
-        cr.set_source_rgb(*cat_white)
-        cr.fill_preserve()
-        cr.set_source_rgba(*cat_outline)
-        cr.set_line_width(1.8)
-        cr.stroke()
-        cr.move_to(cx + 24, cy + 12)
-        cr.curve_to(cx + 24, ry - 2, rx + 4, ry - 2, rx + 4, ry)
-        cr.set_line_width(2.0)
-        cr.stroke()
-
-        # Tap star ripple
-        if self.is_playing or self.drumroll_time > 0:
-            tap_side = -1 if left_down else 1
-            tx = cx + tap_side * 18
-            ty = drum_y
-            cr.set_source_rgba(1.0, 0.85, 0.35, 0.75)
-            cr.arc(tx, ty - 2, 4.2, 0, 2 * math.pi)
-            cr.stroke()
-
-        # 9. Floating Notes
-        cr.select_font_face('Sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        cr.set_font_size(13.0)
-        for nx, ny, alpha, char in self.notes:
-            cr.set_source_rgba(accent[0], accent[1], accent[2], alpha * 0.9)
-            cr.move_to(cx + nx, cy - 25 + ny)
-            cr.show_text(char)
+            for nx, ny, alpha, char in self.notes:
+                cr.set_source_rgba(accent[0], accent[1], accent[2], alpha * 0.9)
+                layout.set_text(char, -1)
+                cr.move_to(w / 2.0 + nx, 18.0 + ny)
+                PangoCairo.show_layout(cr, layout)
 
         return False
 

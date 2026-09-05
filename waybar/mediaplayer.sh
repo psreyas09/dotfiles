@@ -32,7 +32,7 @@ while true; do
             frame_idx=$(( (frame_idx + 1) % num_frames ))
             sleep_time=0.8
         elif [ "$status" = "Paused" ]; then
-            display_text="󰏤 $title"
+            display_text="$title"
             sleep_time=1.5
         else
             display_text="$title"

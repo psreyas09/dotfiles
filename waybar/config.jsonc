@@ -181,7 +181,7 @@
     },
 
     "custom/media": {
-        "format": "󰝚 {text}", 
+        "format": "{text}", 
         "return-type": "json",
         "max-length": 22,
         "exec": "$HOME/.config/waybar/mediaplayer.sh",
