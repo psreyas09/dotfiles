@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import json
+import threading
 import time
 import math
 import cairo
@@ -20,6 +21,7 @@ gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk, Gdk, GtkLayerShell, Playerctl, GLib, GdkPixbuf, Pango, PangoCairo
 
 PID_FILE = "/tmp/waybar_media_popup.pid"
+app_instance = None
 
 def toggle_or_exit():
     if os.path.exists(PID_FILE):
@@ -39,6 +41,12 @@ def toggle_or_exit():
         f.write(str(os.getpid()))
 
 def cleanup(*_):
+    global app_instance
+    try:
+        if app_instance and hasattr(app_instance, "cava") and app_instance.cava:
+            app_instance.cava.stop()
+    except Exception:
+        pass
     try:
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
@@ -294,12 +302,126 @@ class MaterialWavySeekBar(Gtk.DrawingArea):
         cr.fill()
 
 
+class CavaAudioSpectrum:
+    """
+    Real-time audio spectrum analyzer using CAVA:
+    - Feeds live frequency bars into the radial cover visualizer.
+    - Runs in a lightweight background daemon thread.
+    - Zero CPU overhead when stopped or paused.
+    - Symmetrically maps 24 audio bands across 48 radial bars.
+    """
+    def __init__(self, num_bands=24):
+        self.num_bands = num_bands
+        self.proc = None
+        self.thread = None
+        self.running = False
+        self.pid = os.getpid()
+        self.fifo_path = f"/tmp/cava_cover_{self.pid}.fifo"
+        self.conf_path = f"/tmp/cava_cover_{self.pid}.conf"
+        self.latest_bars = [0.0] * (num_bands * 2)
+
+    def start(self):
+        if self.proc:
+            return
+        if os.path.exists(self.fifo_path):
+            try:
+                os.remove(self.fifo_path)
+            except OSError:
+                pass
+        try:
+            os.mkfifo(self.fifo_path)
+        except OSError:
+            return
+
+        cava_conf = f"""
+[general]
+bars = {self.num_bands}
+framerate = 60
+autosens = 1
+overshoot = 20
+sensitivity = 140
+sleep_timer = 0
+
+[input]
+method = pulse
+source = auto
+
+[output]
+method = raw
+raw_target = {self.fifo_path}
+data_format = binary
+bit_format = 8bit
+"""
+        try:
+            with open(self.conf_path, "w") as f:
+                f.write(cava_conf)
+        except OSError:
+            return
+
+        try:
+            self.proc = subprocess.Popen(
+                ["cava", "-p", self.conf_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            self.proc = None
+            return
+
+        self.running = True
+        self.thread = threading.Thread(target=self._read_loop, daemon=True)
+        self.thread.start()
+
+    def _read_loop(self):
+        try:
+            fd = os.open(self.fifo_path, os.O_RDONLY)
+        except OSError:
+            return
+
+        while self.running:
+            try:
+                chunk = os.read(fd, self.num_bands)
+                if len(chunk) == self.num_bands:
+                    left = [b / 255.0 for b in chunk]
+                    right = list(reversed(left))
+                    self.latest_bars = left + right
+                elif len(chunk) == 0:
+                    break
+            except OSError:
+                break
+
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+    def stop(self):
+        self.running = False
+        if self.proc:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=0.4)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            self.proc = None
+
+        for path in [self.conf_path, self.fifo_path]:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
 class CircularCoverVisualizer(Gtk.DrawingArea):
     """
     Caelestia-style circular cover art with 360-degree radial audio visualizer:
-    - Center: Album art clipped to a circle with smooth Wallust accent ring.
-    - Outer: Radial audio spectrum bars radiating outward in a circle.
-    - Reactively pulses with music when playing; smoothly retracts when paused.
+    - Real-time CAVA audio spectrum reactive to live song playback.
+    - Automatic procedural fallback / ALSA direct mode for Strawberry Music Player.
+    - Symmetrical 360-degree frequency flare around album cover.
     """
     def __init__(self):
         super().__init__()
@@ -309,7 +431,9 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
 
         self.phase = 0.0
         self.is_playing = False
-        self.num_bars = 44
+        self.use_procedural = False
+        self.audio_bars_provider = None
+        self.num_bars = 48
         self.bars = [0.08] * self.num_bars
         self.colors = parse_theme_colors()
         self.last_frame_time = None
@@ -332,6 +456,12 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
     def set_playing(self, is_playing):
         self.is_playing = is_playing
 
+    def set_procedural(self, use_procedural):
+        self.use_procedural = use_procedural
+
+    def set_audio_provider(self, provider):
+        self.audio_bars_provider = provider
+
     def set_art_pixbuf(self, pixbuf):
         self.art_pixbuf = pixbuf
         self.scaled_art = None
@@ -347,13 +477,28 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
         need_redraw = False
 
         if self.is_playing:
-            self.phase = (self.phase + 4.8 * dt) % (2.0 * math.pi)
-            for i in range(self.num_bars):
-                h1 = math.sin(self.phase * 1.5 + i * 0.55)**2
-                h2 = math.cos(self.phase * 0.9 + i * 0.35)**2
-                target = 0.12 + 0.88 * (h1 * 0.65 + h2 * 0.35)
-                self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
-            need_redraw = True
+            live_data = None
+            if not self.use_procedural and self.audio_bars_provider:
+                live_data = self.audio_bars_provider.latest_bars
+
+            # Check if live audio spectrum has active audio:
+            if live_data and any(v > 0.01 for v in live_data):
+                for i in range(self.num_bars):
+                    target = min(1.0, live_data[i] * 1.35)
+                    if target > self.bars[i]:
+                        self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 26.0)
+                    else:
+                        self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
+                need_redraw = True
+            else:
+                # Procedural wave/beat animation (for Strawberry ALSA direct or fallback)
+                self.phase = (self.phase + 4.8 * dt) % (2.0 * math.pi)
+                for i in range(self.num_bars):
+                    h1 = math.sin(self.phase * 1.5 + i * 0.55)**2
+                    h2 = math.cos(self.phase * 0.9 + i * 0.35)**2
+                    target = 0.12 + 0.88 * (h1 * 0.65 + h2 * 0.35)
+                    self.bars[i] += (target - self.bars[i]) * min(1.0, dt * 14.0)
+                need_redraw = True
         else:
             decaying = False
             for i in range(self.num_bars):
@@ -687,6 +832,11 @@ class MediaPopup(Gtk.Window):
             self.select_player_by_instance(chosen)
 
         self.initialized = True
+
+        # CAVA Audio Spectrum for Live Song Visualization
+        self.cava = CavaAudioSpectrum(24)
+        self.cover_vis.set_audio_provider(self.cava)
+
         self.update_all()
 
         # Update timer for seekbar & time (every 500ms)
@@ -716,6 +866,8 @@ class MediaPopup(Gtk.Window):
             return
         self.is_closing = True
         self.close_start = None
+        if hasattr(self, "cava") and self.cava:
+            self.cava.stop()
         try:
             if os.path.exists(PID_FILE):
                 os.remove(PID_FILE)
@@ -1366,14 +1518,51 @@ class MediaPopup(Gtk.Window):
         self.update_seekbar_range()
         self.update_seekbar()
 
+    def is_strawberry_active(self):
+        if not self.player:
+            return False
+        pname = (getattr(self.player.props, "player_name", "") or "").lower()
+        pinst = (getattr(self.player.props, "player_instance", "") or "").lower()
+        return "strawberry" in pname or "strawberry" in pinst
+
+    def update_visualizer_mode(self):
+        if not self.player:
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_playing(False)
+                self.cover_vis.set_procedural(False)
+            if hasattr(self, "cava") and self.cava:
+                self.cava.stop()
+            if hasattr(self, "bongo_cat"):
+                self.bongo_cat.set_playing(False)
+            return
+
+        status = self.player.get_property("playback-status")
+        is_playing = (status == Playerctl.PlaybackStatus.PLAYING)
+        if hasattr(self, "cover_vis"):
+            self.cover_vis.set_playing(is_playing)
+        if hasattr(self, "bongo_cat"):
+            self.bongo_cat.set_playing(is_playing)
+
+        if self.is_strawberry_active():
+            # Strawberry outputs directly to ALSA soundcard, so run procedural visualization
+            # without depending on audio capture from PipeWire/PulseAudio!
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_procedural(True)
+            if hasattr(self, "cava") and self.cava:
+                self.cava.stop()
+        else:
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_procedural(False)
+            if is_playing and hasattr(self, "cava") and self.cava:
+                self.cava.start()
+            elif hasattr(self, "cava") and self.cava:
+                self.cava.stop()
+
     def update_play_icon(self):
         if not self.player:
             self.btn_play.set_label("󰐎")
             self.seekbar.set_playing(False)
-            if hasattr(self, "bongo_cat"):
-                self.bongo_cat.set_playing(False)
-            if hasattr(self, "cover_vis"):
-                self.cover_vis.set_playing(False)
+            self.update_visualizer_mode()
             return
         status = self.player.get_property("playback-status")
         is_playing = (status == Playerctl.PlaybackStatus.PLAYING)
@@ -1382,10 +1571,7 @@ class MediaPopup(Gtk.Window):
         else:
             self.btn_play.set_label("󰐊")
         self.seekbar.set_playing(is_playing)
-        if hasattr(self, "bongo_cat"):
-            self.bongo_cat.set_playing(is_playing)
-        if hasattr(self, "cover_vis"):
-            self.cover_vis.set_playing(is_playing)
+        self.update_visualizer_mode()
 
     def update_seekbar_range(self):
         if not self.player:
@@ -1759,11 +1945,13 @@ class MediaPopup(Gtk.Window):
         )
 
 def main():
+    global app_instance
     toggle_or_exit()
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
 
     app = MediaPopup()
+    app_instance = app
     signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.close_animated))
 
     app.show_all()
