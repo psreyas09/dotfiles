@@ -12,6 +12,7 @@ import math
 import cairo
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 gi.require_version('GdkPixbuf', '2.0')
 gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
@@ -68,6 +69,12 @@ def get_current_avatar_path():
             return p
     return None
 
+def get_avatar_source_path():
+    p = os.path.expanduser("~/.config/waybar/avatar_source.png")
+    if os.path.exists(p) and os.path.isfile(p):
+        return p
+    return get_current_avatar_path()
+
 def get_avatar_pixbuf(size):
     path = get_current_avatar_path()
     if not path:
@@ -122,6 +129,7 @@ def set_profile_picture(filepath):
 
 def remove_profile_picture():
     for p in [os.path.expanduser("~/.config/waybar/avatar.png"),
+              os.path.expanduser("~/.config/waybar/avatar_source.png"),
               os.path.expanduser("~/.face"),
               os.path.expanduser("~/.face.icon")]:
         try:
@@ -575,7 +583,329 @@ def set_howdy_status(enable: bool, callback=None):
         if callback:
             GLib.idle_add(callback, success, final_state)
 
-    threading.Thread(target=worker, daemon=True).start()
+class AvatarCropDialog(Gtk.Dialog):
+    """Interactive Crop, Pan, Zoom, and Rotation Dialog for Profile Pictures"""
+    def __init__(self, parent, image_path):
+        super().__init__(
+            title="Crop & Adjust Profile Picture",
+            transient_for=parent,
+            modal=True,
+            destroy_with_parent=True
+        )
+        self.set_default_size(460, 620)
+        self.set_resizable(False)
+        self.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+        self.set_name("crop-dialog")
+
+        self.image_path = image_path
+        self.orig_pixbuf = None
+        try:
+            if image_path and os.path.exists(image_path):
+                pb = GdkPixbuf.Pixbuf.new_from_file(image_path)
+                if hasattr(pb, 'apply_embedded_orientation'):
+                    pb = pb.apply_embedded_orientation()
+                self.orig_pixbuf = pb
+        except Exception as e:
+            print(f"Error loading image for crop dialog: {e}", file=sys.stderr)
+
+        self.zoom = 1.0
+        self.offset_x = 0.0
+        self.offset_y = 0.0
+        self.rotation_deg = 0
+        self.dragging = False
+        self.drag_start_x = 0.0
+        self.drag_start_y = 0.0
+        self.start_offset_x = 0.0
+        self.start_offset_y = 0.0
+        self.canvas_size = 350
+        self.crop_radius = 135.0
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        content = self.get_content_area()
+        content.set_spacing(12)
+        content.set_margin_start(18)
+        content.set_margin_end(18)
+        content.set_margin_top(16)
+        content.set_margin_bottom(12)
+
+        # Header
+        head_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        t_lbl = Gtk.Label(label="Crop & Adjust Picture")
+        t_lbl.set_name("row-title")
+        t_lbl.set_xalign(0.5)
+        head_box.pack_start(t_lbl, False, False, 0)
+
+        sub_lbl = Gtk.Label(label="Drag to reposition • Scroll or slider to zoom • Rotate 90°")
+        sub_lbl.set_name("row-subtitle")
+        sub_lbl.set_xalign(0.5)
+        head_box.pack_start(sub_lbl, False, False, 0)
+        content.pack_start(head_box, False, False, 0)
+
+        # Canvas Frame
+        canvas_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        canvas_box.set_halign(Gtk.Align.CENTER)
+        canvas_box.set_name("crop-canvas-box")
+
+        self.canvas = Gtk.DrawingArea()
+        self.canvas.set_size_request(self.canvas_size, self.canvas_size)
+        self.canvas.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK |
+            Gdk.EventMask.BUTTON_RELEASE_MASK |
+            Gdk.EventMask.POINTER_MOTION_MASK |
+            Gdk.EventMask.SCROLL_MASK |
+            Gdk.EventMask.ENTER_NOTIFY_MASK |
+            Gdk.EventMask.LEAVE_NOTIFY_MASK
+        )
+        self.canvas.connect("draw", self.on_draw)
+        self.canvas.connect("button-press-event", self.on_button_press)
+        self.canvas.connect("button-release-event", self.on_button_release)
+        self.canvas.connect("motion-notify-event", self.on_motion)
+        self.canvas.connect("scroll-event", self.on_scroll)
+        self.canvas.connect("enter-notify-event", self.on_enter)
+        self.canvas.connect("leave-notify-event", self.on_leave)
+
+        canvas_box.pack_start(self.canvas, False, False, 0)
+        content.pack_start(canvas_box, False, False, 0)
+
+        # Zoom Controls
+        zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        zoom_box.set_margin_start(10)
+        zoom_box.set_margin_end(10)
+
+        btn_zoom_out = Gtk.Button.new_from_icon_name("zoom-out-symbolic", Gtk.IconSize.BUTTON)
+        btn_zoom_out.set_tooltip_text("Zoom Out")
+        btn_zoom_out.connect("clicked", lambda *_: self.zoom_scale.set_value(max(0.5, self.zoom - 0.1)))
+        zoom_box.pack_start(btn_zoom_out, False, False, 0)
+
+        self.zoom_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.5, 4.0, 0.05)
+        self.zoom_scale.set_value(1.0)
+        self.zoom_scale.set_hexpand(True)
+        self.zoom_scale.set_draw_value(False)
+        self.zoom_scale.connect("value-changed", self.on_zoom_changed)
+        zoom_box.pack_start(self.zoom_scale, True, True, 0)
+
+        btn_zoom_in = Gtk.Button.new_from_icon_name("zoom-in-symbolic", Gtk.IconSize.BUTTON)
+        btn_zoom_in.set_tooltip_text("Zoom In")
+        btn_zoom_in.connect("clicked", lambda *_: self.zoom_scale.set_value(min(4.0, self.zoom + 0.1)))
+        zoom_box.pack_start(btn_zoom_in, False, False, 0)
+
+        content.pack_start(zoom_box, False, False, 0)
+
+        # Quick Actions Row
+        actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        actions_box.set_halign(Gtk.Align.CENTER)
+
+        btn_rotate = Gtk.Button(label="󰑐 Rotate 90°")
+        btn_rotate.connect("clicked", self.on_rotate_clicked)
+        actions_box.pack_start(btn_rotate, False, False, 0)
+
+        btn_reset = Gtk.Button(label="󰦛 Reset")
+        btn_reset.connect("clicked", self.on_reset_clicked)
+        actions_box.pack_start(btn_reset, False, False, 0)
+
+        content.pack_start(actions_box, False, False, 0)
+
+        # Dialog buttons
+        self.add_button("_Cancel", Gtk.ResponseType.CANCEL)
+        save_btn = self.add_button("󰸞 Save Avatar", Gtk.ResponseType.ACCEPT)
+        save_btn.get_style_context().add_class("suggested-action")
+        save_btn.set_name("crop-btn-save")
+        self.set_default_response(Gtk.ResponseType.ACCEPT)
+
+    def on_enter(self, widget, event):
+        window = widget.get_window()
+        if window:
+            window.set_cursor(Gdk.Cursor.new_from_name(widget.get_display(), "grab"))
+        return False
+
+    def on_leave(self, widget, event):
+        window = widget.get_window()
+        if window:
+            window.set_cursor(None)
+        return False
+
+    def on_button_press(self, widget, event):
+        if event.button == 1:
+            self.dragging = True
+            self.drag_start_x = event.x
+            self.drag_start_y = event.y
+            self.start_offset_x = self.offset_x
+            self.start_offset_y = self.offset_y
+            window = widget.get_window()
+            if window:
+                window.set_cursor(Gdk.Cursor.new_from_name(widget.get_display(), "grabbing"))
+            return True
+        return False
+
+    def on_button_release(self, widget, event):
+        if event.button == 1:
+            self.dragging = False
+            window = widget.get_window()
+            if window:
+                window.set_cursor(Gdk.Cursor.new_from_name(widget.get_display(), "grab"))
+            return True
+        return False
+
+    def on_motion(self, widget, event):
+        if self.dragging:
+            dx = event.x - self.drag_start_x
+            dy = event.y - self.drag_start_y
+            self.offset_x = self.start_offset_x + dx
+            self.offset_y = self.start_offset_y + dy
+            widget.queue_draw()
+            return True
+        return False
+
+    def on_scroll(self, widget, event):
+        factor = 1.12
+        if event.direction == Gdk.ScrollDirection.UP:
+            new_zoom = min(4.0, self.zoom * factor)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            new_zoom = max(0.5, self.zoom / factor)
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+            _, dx, dy = event.get_scroll_deltas()
+            new_zoom = min(4.0, max(0.5, self.zoom * (1.0 - dy * 0.1)))
+        else:
+            return False
+        self.zoom_scale.set_value(new_zoom)
+        return True
+
+    def on_zoom_changed(self, scale):
+        self.zoom = scale.get_value()
+        self.canvas.queue_draw()
+
+    def on_rotate_clicked(self, *_):
+        self.rotation_deg = (self.rotation_deg + 90) % 360
+        self.canvas.queue_draw()
+
+    def on_reset_clicked(self, *_):
+        self.offset_x = 0.0
+        self.offset_y = 0.0
+        self.rotation_deg = 0
+        self.zoom_scale.set_value(1.0)
+        self.canvas.queue_draw()
+
+    def on_draw(self, widget, cr):
+        cw = widget.get_allocated_width()
+        ch = widget.get_allocated_height()
+        if cw <= 0 or ch <= 0:
+            return False
+        cx = cw / 2.0
+        cy = ch / 2.0
+        r = self.crop_radius
+
+        colors = parse_theme_colors()
+        accent = colors.get("accent-purple", (0.44, 0.42, 0.63, 1.0))
+
+        # 1. Dark canvas background
+        cr.set_source_rgb(0.06, 0.06, 0.08)
+        cr.rectangle(0, 0, cw, ch)
+        cr.fill()
+
+        # 2. Draw transformed image
+        if self.orig_pixbuf:
+            ow = self.orig_pixbuf.get_width()
+            oh = self.orig_pixbuf.get_height()
+            eff_w, eff_h = (oh, ow) if self.rotation_deg in (90, 270) else (ow, oh)
+            min_dim = max(1, min(eff_w, eff_h))
+            base_scale = (2.0 * r) / min_dim
+            scale = base_scale * self.zoom
+
+            cr.save()
+            cr.translate(cx + self.offset_x, cy + self.offset_y)
+            cr.rotate(math.radians(self.rotation_deg))
+            cr.scale(scale, scale)
+            Gdk.cairo_set_source_pixbuf(cr, self.orig_pixbuf, -ow / 2.0, -oh / 2.0)
+            cr.paint()
+            cr.restore()
+
+        # 3. Dimmed mask outside circle
+        cr.save()
+        cr.rectangle(0, 0, cw, ch)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.set_fill_rule(cairo.FILL_RULE_EVEN_ODD)
+        cr.set_source_rgba(0.04, 0.04, 0.06, 0.76)
+        cr.fill()
+        cr.restore()
+
+        # 4. Subtle rule-of-thirds grid inside circle
+        cr.save()
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.clip()
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.14)
+        cr.set_line_width(1.0)
+        cr.move_to(cx - r / 3.0, cy - r)
+        cr.line_to(cx - r / 3.0, cy + r)
+        cr.move_to(cx + r / 3.0, cy - r)
+        cr.line_to(cx + r / 3.0, cy + r)
+        cr.move_to(cx - r, cy - r / 3.0)
+        cr.line_to(cx + r, cy - r / 3.0)
+        cr.move_to(cx - r, cy + r / 3.0)
+        cr.line_to(cx + r, cy + r / 3.0)
+        cr.stroke()
+        cr.restore()
+
+        # 5. Accent circle border
+        cr.set_source_rgba(accent[0], accent[1], accent[2], 0.95)
+        cr.set_line_width(2.5)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.stroke()
+
+        # 6. Subtle outer border of canvas
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.12)
+        cr.set_line_width(1.0)
+        cr.rectangle(0.5, 0.5, cw - 1.0, ch - 1.0)
+        cr.stroke()
+        return False
+
+    def save_avatar(self):
+        if not self.orig_pixbuf:
+            return False
+        try:
+            ow = self.orig_pixbuf.get_width()
+            oh = self.orig_pixbuf.get_height()
+            eff_w, eff_h = (oh, ow) if self.rotation_deg in (90, 270) else (ow, oh)
+            min_dim = max(1, min(eff_w, eff_h))
+            OUT_SIZE = 512.0
+            r_screen = self.crop_radius
+            factor = OUT_SIZE / (2.0 * r_screen)
+            out_scale = (OUT_SIZE / min_dim) * self.zoom
+            out_offset_x = self.offset_x * factor
+            out_offset_y = self.offset_y * factor
+
+            surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 512, 512)
+            cr = cairo.Context(surface)
+            cr.translate(256.0 + out_offset_x, 256.0 + out_offset_y)
+            cr.rotate(math.radians(self.rotation_deg))
+            cr.scale(out_scale, out_scale)
+            Gdk.cairo_set_source_pixbuf(cr, self.orig_pixbuf, -ow / 2.0, -oh / 2.0)
+            cr.paint()
+
+            target_waybar = os.path.expanduser("~/.config/waybar/avatar.png")
+            target_source = os.path.expanduser("~/.config/waybar/avatar_source.png")
+            target_face = os.path.expanduser("~/.face")
+            target_face_icon = os.path.expanduser("~/.face.icon")
+
+            os.makedirs(os.path.dirname(target_waybar), exist_ok=True)
+            surface.write_to_png(target_waybar)
+            surface.write_to_png(target_face)
+            try:
+                surface.write_to_png(target_face_icon)
+            except Exception:
+                pass
+
+            try:
+                if self.image_path and os.path.exists(self.image_path) and os.path.abspath(self.image_path) != os.path.abspath(target_source):
+                    shutil.copy2(self.image_path, target_source)
+            except Exception:
+                pass
+
+            return True
+        except Exception as e:
+            print(f"Error saving cropped avatar: {e}", file=sys.stderr)
+            return False
 
 
 class SettingsCard(Gtk.Box):
@@ -1241,7 +1571,12 @@ class NiriSettingsApp(Gtk.Window):
         hero_box.set_margin_top(16)
         hero_box.set_margin_bottom(16)
 
-        # Avatar Drawing Area (96x96 px circular)
+        # Avatar Drawing Area (96x96 px circular) inside clickable EventBox
+        avatar_event_box = Gtk.EventBox()
+        avatar_event_box.set_tooltip_text("Click to adjust & crop profile picture")
+        avatar_event_box.connect("enter-notify-event", lambda w, e: w.get_window().set_cursor(Gdk.Cursor.new_from_name(w.get_display(), "pointer")) if w.get_window() else None)
+        avatar_event_box.connect("leave-notify-event", lambda w, e: w.get_window().set_cursor(None) if w.get_window() else None)
+
         avatar_draw = Gtk.DrawingArea()
         avatar_draw.set_size_request(96, 96)
 
@@ -1287,7 +1622,8 @@ class NiriSettingsApp(Gtk.Window):
             return False
 
         avatar_draw.connect("draw", draw_avatar)
-        hero_box.pack_start(avatar_draw, False, False, 0)
+        avatar_event_box.add(avatar_draw)
+        hero_box.pack_start(avatar_event_box, False, False, 0)
 
         # Info Box
         info_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -1307,7 +1643,7 @@ class NiriSettingsApp(Gtk.Window):
         path_lbl.set_xalign(0)
         info_vbox.pack_start(path_lbl, False, False, 0)
 
-        tip_lbl = Gtk.Label(label="PNG, JPG, WEBP, or SVG • Saved to ~/.face and ~/.config/waybar/avatar.png")
+        tip_lbl = Gtk.Label(label="PNG, JPG, WEBP, or SVG • Drag, zoom & rotate to fit perfectly")
         tip_lbl.set_name("badge-label-muted")
         tip_lbl.set_xalign(0)
         info_vbox.pack_start(tip_lbl, False, False, 2)
@@ -1317,6 +1653,23 @@ class NiriSettingsApp(Gtk.Window):
         # Buttons Box
         btn_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         btn_vbox.set_valign(Gtk.Align.CENTER)
+
+        def open_crop_dialog(image_path):
+            if not image_path or not os.path.exists(image_path):
+                return False
+            crop_dlg = AvatarCropDialog(self, image_path)
+            res = crop_dlg.run()
+            saved = False
+            if res == Gtk.ResponseType.ACCEPT:
+                if crop_dlg.save_avatar():
+                    saved = True
+                    avatar_draw.queue_draw()
+                    cur = get_current_avatar_path()
+                    if cur:
+                        path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
+                    async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
+            crop_dlg.destroy()
+            return saved
 
         btn_change = Gtk.Button(label="Change Picture...")
 
@@ -1410,16 +1763,23 @@ class NiriSettingsApp(Gtk.Window):
                     pass
 
             if selected_file and os.path.exists(selected_file):
-                success = set_profile_picture(selected_file)
-                if success:
-                    avatar_draw.queue_draw()
-                    cur = get_current_avatar_path()
-                    if cur:
-                        path_lbl.set_text(f"Active: {cur.replace(os.path.expanduser('~'), '~')}")
-                    async_cmd("pkill -SIGUSR2 -f 'dashboard.py' 2>/dev/null || true")
+                open_crop_dialog(selected_file)
 
         btn_change.connect("clicked", on_change_clicked)
         btn_vbox.pack_start(btn_change, False, False, 0)
+
+        def on_adjust_clicked(*_):
+            src_path = get_avatar_source_path()
+            if src_path and os.path.exists(src_path):
+                open_crop_dialog(src_path)
+            else:
+                on_change_clicked()
+
+        avatar_event_box.connect("button-press-event", on_adjust_clicked)
+
+        btn_adjust = Gtk.Button(label="Adjust & Crop...")
+        btn_adjust.connect("clicked", on_adjust_clicked)
+        btn_vbox.pack_start(btn_adjust, False, False, 0)
 
         btn_remove = Gtk.Button(label="Remove Picture")
         def on_remove_clicked(*_):
@@ -2772,6 +3132,31 @@ class NiriSettingsApp(Gtk.Window):
             border-radius: 8px;
             background-color: @accent-color;
             min-height: 14px;
+        }}
+
+        /* Crop & Adjust Dialog */
+        window#crop-dialog {{
+            background-color: alpha(@bg-color, 0.98);
+        }}
+
+        #crop-canvas-box {{
+            background-color: #0b0b0e;
+            border-radius: 12px;
+            padding: 2px;
+            border: 1px solid alpha(@border-color, 0.35);
+        }}
+
+        #crop-btn-save {{
+            background-color: @accent-color;
+            color: #ffffff;
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 8px 18px;
+            border: 1px solid alpha(@accent-color, 0.8);
+        }}
+
+        #crop-btn-save:hover {{
+            background-color: alpha(@accent-color, 0.85);
         }}
         """
         try:
