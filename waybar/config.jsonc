@@ -53,6 +53,7 @@
     "clock": {
         "format": " {:%I:%M %p}", 
         "format-alt": " {:%A, %B %d, %Y}",
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/dashboard.py",
         "tooltip-format": "<span font='JetBrains Mono 10'><tt>{calendar}</tt></span>",
         "calendar": {
             "mode": "month",
