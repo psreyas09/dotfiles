@@ -2022,28 +2022,87 @@ class NiriSettingsApp(Gtk.Window):
             dwt_sw
         ))
 
+        # ── Sensitivity helper ─────────────────────────────────────────────
+        def make_sensitivity_widget(lo, hi, step, default_val, current_val,
+                                    lo_label, hi_label, fmt_fn, on_change):
+            """Compact compound control: endpoint labels + slider + live chip + Reset."""
+            wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            wrapper.set_size_request(260, -1)
+
+            slider_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+            lbl_lo = Gtk.Label(label=lo_label)
+            lbl_lo.set_name("row-subtitle")
+            slider_row.pack_start(lbl_lo, False, False, 0)
+
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, lo, hi, step)
+            scale.set_value(current_val)
+            scale.set_draw_value(False)
+            scale.set_hexpand(True)
+            scale.add_mark(lo,                Gtk.PositionType.BOTTOM, None)
+            scale.add_mark((lo + hi) / 2,    Gtk.PositionType.BOTTOM, None)
+            scale.add_mark(hi,                Gtk.PositionType.BOTTOM, None)
+            scale.add_mark(default_val,       Gtk.PositionType.BOTTOM, None)
+            slider_row.pack_start(scale, True, True, 0)
+
+            lbl_hi = Gtk.Label(label=hi_label)
+            lbl_hi.set_name("row-subtitle")
+            slider_row.pack_start(lbl_hi, False, False, 0)
+
+            wrapper.pack_start(slider_row, False, False, 0)
+
+            chip_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            chip_row.set_halign(Gtk.Align.END)
+
+            val_lbl = Gtk.Label(label=fmt_fn(current_val))
+            val_lbl.set_name("sens-value-chip")
+            chip_row.pack_start(val_lbl, False, False, 0)
+
+            btn_reset = Gtk.Button(label="Reset")
+            btn_reset.set_name("sens-reset-btn")
+            btn_reset.set_tooltip_text(f"Reset to default ({fmt_fn(default_val)})")
+            chip_row.pack_start(btn_reset, False, False, 0)
+
+            wrapper.pack_start(chip_row, False, False, 0)
+
+            def _on_change(s):
+                val_lbl.set_text(fmt_fn(s.get_value()))
+                on_change(s.get_value())
+            scale.connect("value-changed", _on_change)
+            btn_reset.connect("clicked", lambda _: scale.set_value(default_val))
+
+            return wrapper
+
         # Touchpad Pointer Speed
-        speed_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -1.0, 1.0, 0.1)
-        speed_scale.set_value(kdl_state["accel_touchpad"])
-        speed_scale.set_size_request(180, -1)
-        speed_scale.connect("value-changed", lambda s: update_niri_input(accel_touchpad=s.get_value()))
+        speed_widget = make_sensitivity_widget(
+            lo=-1.0, hi=1.0, step=0.05,
+            default_val=0.2,
+            current_val=kdl_state["accel_touchpad"],
+            lo_label="Slow", hi_label="Fast",
+            fmt_fn=lambda v: f"{v:+.2f}",
+            on_change=lambda v: update_niri_input(accel_touchpad=round(v, 2)),
+        )
         pad_card.add_row(create_setting_row(
             "input-mouse",
-            "Touchpad Tracking Speed",
-            "Adjust cursor acceleration and pointer responsiveness",
-            speed_scale
+            "Touchpad Sensitivity",
+            "Drag to adjust pointer speed • negative = slower, positive = faster",
+            speed_widget
         ))
 
-        # Scroll Factor
-        scroll_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.4, 2.0, 0.1)
-        scroll_scale.set_value(kdl_state["scroll_factor"])
-        scroll_scale.set_size_request(180, -1)
-        scroll_scale.connect("value-changed", lambda s: update_niri_input(scroll_factor=s.get_value()))
+        # Scroll Sensitivity
+        scroll_widget = make_sensitivity_widget(
+            lo=0.4, hi=3.0, step=0.1,
+            default_val=1.0,
+            current_val=kdl_state["scroll_factor"],
+            lo_label="Slow", hi_label="Fast",
+            fmt_fn=lambda v: f"{v:.1f}\u00d7",
+            on_change=lambda v: update_niri_input(scroll_factor=round(v, 1)),
+        )
         pad_card.add_row(create_setting_row(
             "edit-select-all",
             "Scroll Sensitivity",
-            "Adjust vertical and horizontal distance traveled per swipe unit",
-            scroll_scale
+            "Distance scrolled per two-finger swipe unit (1.0\u00d7 = default)",
+            scroll_widget
         ))
 
         # Mouse & Focus Card
@@ -3242,6 +3301,35 @@ class NiriSettingsApp(Gtk.Window):
 
         #crop-btn-save:hover {{
             background-color: alpha(@accent-color, 0.85);
+        }}
+
+        /* Sensitivity slider chip & reset */
+        #sens-value-chip {{
+            font-family: "JetBrains Mono", monospace;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: @accent-color;
+            background-color: alpha(@accent-color, 0.12);
+            border: 1px solid alpha(@accent-color, 0.30);
+            border-radius: 6px;
+            padding: 2px 8px;
+            min-width: 52px;
+        }}
+
+        #sens-reset-btn {{
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 6px;
+            background-color: alpha(@fg-color, 0.07);
+            border: 1px solid alpha(@border-color, 0.30);
+            color: rgba(255,255,255,0.60);
+        }}
+
+        #sens-reset-btn:hover {{
+            background-color: alpha(@accent-color, 0.18);
+            border-color: @accent-color;
+            color: @accent-color;
         }}
         """
         try:

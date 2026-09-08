@@ -35,6 +35,9 @@ from gi.repository import Gtk, Gdk, GtkLayerShell, GLib, Pango, PangoCairo, GdkP
 PID_FILE = "/tmp/waybar_dashboard.pid"
 TAB_FILE = "/tmp/waybar_dashboard_tab"
 THEME_CSS = "/home/sreyas/.config/waybar/current-theme.css"
+# A short grace period lets the pointer travel from the clock trigger into the
+# dashboard card without reversing the opening animation midway.
+HOVER_HIDE_DELAY_MS = 650
 app_instance = None
 
 def parse_theme_colors():
@@ -1280,7 +1283,10 @@ class DashboardWindow(Gtk.Window):
         }}
 
         #dashboard-card {{
-            background-color: alpha(@bg-color, 0.94);
+            /* Neutral translucent glass: preserve the blurred colours of the
+               focused app instead of tinting every transition with Wallust's
+               wallpaper-derived background colour. */
+            background-color: rgba(12, 14, 18, 0.58);
             border: 1.5px solid alpha(@accent-purple, 0.35);
             border-radius: 26px;
             padding: 16px 20px 20px 20px;
@@ -1867,6 +1873,8 @@ class HoverTriggerWindow(Gtk.Window):
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
         GtkLayerShell.set_namespace(self, "dashboard-trigger")
         GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.NONE)
+        # -1 = ignore other exclusive zones → places this window at the absolute
+        # screen top (y=0), overlapping Waybar, NOT below it.
         GtkLayerShell.set_exclusive_zone(self, -1)
 
         # Centered horizontally, anchored to TOP over Waybar's clock
@@ -1875,8 +1883,11 @@ class HoverTriggerWindow(Gtk.Window):
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.RIGHT, False)
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.BOTTOM, False)
 
+        # Waybar height = 34px. The trigger window matches it exactly.
+        WAYBAR_H = 34
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 0)
-        self.set_size_request(240, 46)
+        self.set_size_request(240, WAYBAR_H)
+        self._trigger_height = WAYBAR_H
 
         # Fully transparent visual
         screen = self.get_screen()
@@ -1886,9 +1897,13 @@ class HoverTriggerWindow(Gtk.Window):
         self.set_app_paintable(True)
         self.connect("draw", self.on_draw)
 
+        # Constrain the input (pointer-event) region to exactly WAYBAR_H pixels
+        # after the window is realized so the Gdk.Window exists.
+        self.connect("realize", self._apply_input_shape)
+
         ev_box = Gtk.EventBox()
         ev_box.set_visible_window(False)
-        ev_box.set_size_request(240, 46)
+        ev_box.set_size_request(240, WAYBAR_H)
         self.add(ev_box)
 
         # Event masks for hover and click
@@ -1901,6 +1916,14 @@ class HoverTriggerWindow(Gtk.Window):
         self.connect("enter-notify-event", self.on_mouse_enter)
         self.connect("leave-notify-event", self.on_mouse_leave)
         self.connect("button-press-event", self.on_button_press)
+
+    def _apply_input_shape(self, widget):
+        """Restrict the input (hit-test) region to the exact 240×34 strip."""
+        gdk_win = self.get_window()
+        if gdk_win is None:
+            return
+        region = cairo.Region(cairo.RectangleInt(0, 0, 240, self._trigger_height))
+        gdk_win.input_shape_combine_region(region, 0, 0)
 
     def on_draw(self, widget, cr):
         cr.set_operator(cairo.OPERATOR_CLEAR)
@@ -2002,7 +2025,7 @@ class DashboardApp:
         self.cancel_hide_timer()
         # Only auto-hide if not pinned, not choosing file, and currently open (or opening)
         if not self.dashboard_win.pinned and not getattr(self.dashboard_win, "in_dialog", False) and self.dashboard_win.is_open:
-            self.hide_timer_id = GLib.timeout_add(350, self._on_hide_timer_fired)
+            self.hide_timer_id = GLib.timeout_add(HOVER_HIDE_DELAY_MS, self._on_hide_timer_fired)
 
     def _on_hide_timer_fired(self):
         self.hide_timer_id = None

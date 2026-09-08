@@ -92,6 +92,17 @@
     ]
   },
   {
+    "name": "YouTube Music",
+    "icon": [
+      "youtube-music",
+      "com.github.th-ch.youtube-music"
+    ],
+    "cmd": "\"/opt/YouTube Music/youtube-music\"",
+    "app_ids": [
+      "com.github.th-ch.youtube-music"
+    ]
+  },
+  {
     "name": "Strawberry",
     "icon": [
       "strawberry",
