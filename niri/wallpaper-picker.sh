@@ -168,11 +168,9 @@ restore_wallpaper() {
             ensure_swww
             swww img "$wall" --transition-type none 2>/dev/null || swww img "$wall" 2>/dev/null
 
-            # If blurred cache does not exist, generate it
-            if [ ! -f "$BLURRED_WALL" ]; then
-                magick "$wall" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
-                ffmpeg -y -i "$wall" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
-            fi
+            # Always regenerate blurred cache on restore so it matches the current wallpaper
+            magick "$wall" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
+            ffmpeg -y -i "$wall" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
 
             nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
             ;;
