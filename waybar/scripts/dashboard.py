@@ -228,6 +228,9 @@ class DashboardWindow(Gtk.Window):
                     ctx.remove_class("pinned")
 
     def open_animated(self, pinned=False):
+        if not pinned and hasattr(self, "app") and self.app and self.app.is_fullscreen_active():
+            return
+
         if pinned:
             self.pinned = True
         self.update_pin_button_state()
@@ -1248,6 +1251,9 @@ class DashboardWindow(Gtk.Window):
         if getattr(self, "last_avatar_mtime", 0) != cur_mtime:
             self.reload_avatar_images()
 
+        if hasattr(self, "app") and self.app and hasattr(self.app, "sync_fullscreen_state"):
+            self.app.sync_fullscreen_state()
+
         if self.is_open:
             self.refresh_all_data()
         else:
@@ -1731,10 +1737,124 @@ class DashboardWindow(Gtk.Window):
         )
 
 
+class NiriFullscreenTracker:
+    """
+    Event-driven tracker that listens to Niri compositor events via 'niri msg -j event-stream'.
+    Detects instantly when full-screen applications or videos (like Zen Browser, YouTube, mpv, games)
+    are active on the current workspace, notifying listeners without any polling overhead.
+    """
+    def __init__(self, callback=None):
+        self.callback = callback
+        self.windows = {}
+        self.active_workspace_id = None
+        self.active_workspace_window = {}
+        self.focused_window_id = None
+        self.is_fullscreen = False
+        self.screen_height = 1080
+        try:
+            disp = Gdk.Display.get_default()
+            if disp:
+                mon = disp.get_monitor(0)
+                if mon:
+                    self.screen_height = mon.get_geometry().height
+        except Exception:
+            pass
+
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _evaluate(self):
+        fs = False
+        cutoff = self.screen_height - 15
+
+        # Check focused window
+        if self.focused_window_id in self.windows:
+            w = self.windows[self.focused_window_id]
+            ts = w.get("layout", {}).get("tile_size") or [0, 0]
+            ws = w.get("layout", {}).get("window_size") or [0, 0]
+            if ts[1] >= cutoff or ws[1] >= cutoff:
+                fs = True
+
+        # Check active window on active workspace
+        if not fs and self.active_workspace_id in self.active_workspace_window:
+            act_win_id = self.active_workspace_window[self.active_workspace_id]
+            if act_win_id in self.windows:
+                w = self.windows[act_win_id]
+                ts = w.get("layout", {}).get("tile_size") or [0, 0]
+                ws = w.get("layout", {}).get("window_size") or [0, 0]
+                if ts[1] >= cutoff or ws[1] >= cutoff:
+                    fs = True
+
+        if fs != self.is_fullscreen:
+            self.is_fullscreen = fs
+            if self.callback:
+                GLib.idle_add(self.callback, self.is_fullscreen)
+
+    def _run(self):
+        while True:
+            proc = None
+            try:
+                proc = subprocess.Popen(
+                    ["niri", "msg", "-j", "event-stream"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True
+                )
+                for line in proc.stdout:
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "WorkspacesChanged" in data:
+                            for ws in data["WorkspacesChanged"].get("workspaces", []):
+                                if ws.get("is_active") and ws.get("is_focused"):
+                                    self.active_workspace_id = ws["id"]
+                                self.active_workspace_window[ws["id"]] = ws.get("active_window_id")
+                            self._evaluate()
+                        elif "WorkspaceActivated" in data:
+                            self.active_workspace_id = data["WorkspaceActivated"].get("id")
+                            self._evaluate()
+                        elif "WorkspaceActiveWindowChanged" in data:
+                            ev = data["WorkspaceActiveWindowChanged"]
+                            self.active_workspace_window[ev.get("workspace_id")] = ev.get("active_window_id")
+                            self._evaluate()
+                        elif "WindowsChanged" in data:
+                            self.windows = {w["id"]: w for w in data["WindowsChanged"].get("windows", [])}
+                            for w in data["WindowsChanged"].get("windows", []):
+                                if w.get("is_focused"):
+                                    self.focused_window_id = w["id"]
+                            self._evaluate()
+                        elif "WindowOpenedOrChanged" in data:
+                            win = data["WindowOpenedOrChanged"].get("window", {})
+                            if win and "id" in win:
+                                self.windows[win["id"]] = win
+                                if win.get("is_focused"):
+                                    self.focused_window_id = win["id"]
+                            self._evaluate()
+                        elif "WindowClosed" in data:
+                            self.windows.pop(data["WindowClosed"].get("id"), None)
+                            self._evaluate()
+                        elif "WindowFocusChanged" in data:
+                            self.focused_window_id = data["WindowFocusChanged"].get("id")
+                            self._evaluate()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            finally:
+                if proc:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+            time.sleep(1.5)
+
+
 class HoverTriggerWindow(Gtk.Window):
     """
     Transparent hover strip anchored over the center of Waybar (clock module).
     Touching or hovering over this area immediately slides down the Caelestia Dashboard!
+    Automatically hides and disables itself when full-screen applications are active.
     """
     def __init__(self, app):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
@@ -1790,6 +1910,9 @@ class HoverTriggerWindow(Gtk.Window):
     def on_mouse_enter(self, widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
+        if self.app.is_fullscreen_active():
+            self.hide()
+            return False
         self.app.on_trigger_enter()
         return False
 
@@ -1800,6 +1923,9 @@ class HoverTriggerWindow(Gtk.Window):
         return False
 
     def on_button_press(self, widget, event):
+        if self.app.is_fullscreen_active():
+            self.hide()
+            return False
         self.app.on_trigger_click()
         return True
 
@@ -1812,7 +1938,60 @@ class DashboardApp:
 
         self.dashboard_win = DashboardWindow(self)
         self.trigger_win = HoverTriggerWindow(self)
-        self.trigger_win.show_all()
+
+        # Fullscreen event tracker
+        self.fs_tracker = NiriFullscreenTracker(self.on_fullscreen_changed)
+        if self.is_fullscreen_active():
+            self.trigger_win.hide()
+        else:
+            self.trigger_win.show_all()
+
+    def is_fullscreen_active(self):
+        if hasattr(self, "fs_tracker") and self.fs_tracker and self.fs_tracker.is_fullscreen:
+            return True
+        # Fast fallback check directly from niri
+        try:
+            p = subprocess.run(
+                ["niri", "msg", "-j", "focused-window"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=0.04
+            )
+            if p.returncode == 0 and p.stdout.strip():
+                w = json.loads(p.stdout)
+                if w:
+                    tile_size = w.get("layout", {}).get("tile_size") or [0, 0]
+                    window_size = w.get("layout", {}).get("window_size") or [0, 0]
+                    h = (self.fs_tracker.screen_height - 15) if hasattr(self, "fs_tracker") and self.fs_tracker else 1065
+                    if tile_size[1] >= h or window_size[1] >= h:
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def on_fullscreen_changed(self, is_fullscreen):
+        if not hasattr(self, "trigger_win") or not self.trigger_win:
+            return
+        if is_fullscreen:
+            if self.trigger_win.get_visible():
+                self.trigger_win.hide()
+            if self.dashboard_win.is_open and not self.dashboard_win.pinned:
+                self.dashboard_win.close_animated()
+        else:
+            if not self.trigger_win.get_visible():
+                self.trigger_win.show_all()
+
+    def sync_fullscreen_state(self):
+        if not hasattr(self, "trigger_win") or not self.trigger_win:
+            return
+        fs = self.is_fullscreen_active()
+        if fs and self.trigger_win.get_visible():
+            self.trigger_win.hide()
+            if self.dashboard_win.is_open and not self.dashboard_win.pinned:
+                self.dashboard_win.close_animated()
+        elif not fs and not self.trigger_win.get_visible():
+            self.trigger_win.show_all()
 
     def cancel_hide_timer(self):
         if self.hide_timer_id is not None:
@@ -1833,6 +2012,8 @@ class DashboardApp:
         return False
 
     def on_trigger_enter(self):
+        if self.is_fullscreen_active():
+            return
         self.mouse_in_trigger = True
         self.cancel_hide_timer()
         if not self.dashboard_win.is_open or self.dashboard_win.anim_direction < 0:
@@ -1851,6 +2032,8 @@ class DashboardApp:
         self.schedule_hide_check()
 
     def on_trigger_click(self):
+        if self.is_fullscreen_active():
+            return
         self.toggle()
 
     def toggle(self):

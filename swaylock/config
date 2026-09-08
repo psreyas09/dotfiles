@@ -1,42 +1,61 @@
-# Swaylock Aesthetic Configuration - Gruvbox Dark / Blur Effect
+# ==============================================================================
+# Swaylock-Effects macOS Sonoma Aesthetic Configuration
+# ==============================================================================
 daemonize
 ignore-empty-password
 show-failed-attempts
 
-# Background & Blur
+# --- Background & Effects (High-Fidelity Blur & Subtle Vignette) ---
 screenshots
-effect-blur=12x6
-effect-vignette=0.3:0.6
+effect-blur=10x5
+effect-vignette=0.35:0.65
+fade-in=0.2
 
-# Clock & Date
-clock
-timestr=%H:%M
-datestr=%a, %b %d
-
-# Unlock Indicator Circle Position & Size
+# --- Lock Indicator Geometry (Positioned on Password Box Submit Button) ---
 indicator
-indicator-radius=135
-indicator-thickness=12
+indicator-x-position=1061
+indicator-y-position=553
+indicator-radius=13
+indicator-thickness=2
+indicator-idle-visible
+line-uses-ring
 
-# Gruvbox Color Palette Integration
-ring-color=d3869b
-ring-ver-color=7daea3
-ring-wrong-color=ea6962
-ring-clear-color=fabd2f
+# --- Frosted Glass Palette (macOS Translucent Accents) ---
+ring-color=ffffff20
+inside-color=00000000
+key-hl-color=ffffffee
+bs-hl-color=ff5e57ee
+separator-color=00000000
 
-inside-color=282828c0
-inside-ver-color=282828c0
-inside-wrong-color=282828c0
-inside-clear-color=282828c0
+# Base Text (Kept clean & minimal)
+text-color=ffffff00
 
-key-hl-color=7daea3
-bs-hl-color=ea6962
+# State: Cleared
+text-clear=
+text-clear-color=ffffff00
+ring-clear-color=34c759cc
+inside-clear-color=34c75935
+
+# State: Verifying (macOS System Blue)
+text-ver=
+text-ver-color=ffffff00
+ring-ver-color=0a84ffcc
+inside-ver-color=0a84ff40
+
+# State: Wrong / Invalid (macOS Vibrant Red)
+text-wrong=
+text-wrong-color=ffffff00
+ring-wrong-color=ff453acc
+inside-wrong-color=ff453a40
+
+# State: Caps Lock (macOS Vibrant Orange)
+indicator-caps-lock
+ring-caps-lock-color=ff9f0acc
+inside-caps-lock-color=ff9f0a40
+text-caps-lock-color=ffffff00
+
+# Layout Box & Separators
 line-color=00000000
-line-ver-color=00000000
-line-wrong-color=00000000
-line-clear-color=00000000
-
-text-color=dfbf8e
-text-ver-color=7daea3
-text-wrong-color=ea6962
-text-clear-color=fabd2f
+layout-bg-color=00000000
+layout-border-color=00000000
+layout-text-color=ffffffaa

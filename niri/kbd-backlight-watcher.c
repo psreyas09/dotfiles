@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <stdint.h>
+#include <sys/file.h>
 
 static uint64_t get_time_ms(void) {
     struct timespec ts;
@@ -61,6 +62,14 @@ static int read_int_from_file(const char *path) {
 }
 
 int main(void) {
+    int lock_fd = open("/tmp/kbd-backlight-watcher.lock", O_CREAT | O_RDWR, 0644);
+    if (lock_fd >= 0) {
+        if (flock(lock_fd, LOCK_EX | LOCK_NB) < 0) {
+            fprintf(stderr, "Another instance of kbd-backlight-watcher is already running. Exiting.\n");
+            close(lock_fd);
+            return 0;
+        }
+    }
     glob_t globbuf;
     char bright_path[512] = {0};
     char max_path[512] = {0};

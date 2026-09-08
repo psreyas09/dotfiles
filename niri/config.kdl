@@ -249,11 +249,27 @@ layer-rule {
     geometry-corner-radius 26
 }
 
+// macOS Sonoma Lockscreen Media Widget blur & shadow
+layer-rule {
+    match namespace="^lock-media$"
+    background-effect {
+        blur true
+    }
+    shadow {
+        on
+        softness 40
+        spread 6
+        offset x=0 y=6
+        color "#00000090"
+    }
+    geometry-corner-radius 24
+}
+
 spawn-at-startup "lxpolkit"
 
 spawn-at-startup "sh" "-c" "killall waybar; waybar"
 spawn-at-startup "swaync"
-spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"
+// spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"  // Managed by systemd user service: kbd-backlight-osd.service
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-menu.py" "--daemon"
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/dashboard.py" "--daemon"
 
@@ -263,6 +279,7 @@ spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/dashboa
 spawn-at-startup "/home/sreyas/.config/niri/toggle-autolock.sh" "--startup"
 
 spawn-at-startup "/home/sreyas/.config/niri/wallpaper-picker.sh" "--restore"
+// Start from Niri so GTK inherits the active Wayland display.
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/macos-dock.py"
 
 
@@ -300,7 +317,7 @@ binds {
     Mod+Shift+R { spawn "bash" "/home/sreyas/.config/niri/screen-recorder.sh"; }
 
     // --- Direct Lock & Auto-Lock Toggle ---
-    Mod+L { spawn "swaylock"; }
+    Mod+L { spawn "/home/sreyas/.config/niri/lock-screen.sh"; }
     Mod+Shift+L { spawn "bash" "/home/sreyas/.config/niri/toggle-autolock.sh"; }
 
     Mod+Shift+B { spawn "sh" "-c" "killall waybar; waybar"; }

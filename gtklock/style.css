@@ -1,0 +1,131 @@
+/* macOS Sonoma GTK Lock Screen Theme */
+
+* {
+    font-family: "Google Sans Flex", -apple-system, BlinkMacSystemFont, "Cantarell", "SF Pro Display", "Symbols Nerd Font", sans-serif;
+    font-feature-settings: "tnum";
+}
+
+window {
+    background-color: transparent;
+}
+
+#window-box {
+    margin-top: 60px;
+}
+
+#time-box {
+    margin-bottom: 20px;
+}
+
+/* Force clock and date to always stay giant & beautiful (overriding gtklock default 32pt shrink) */
+window #clock-label,
+window.focused:not(.hidden) #clock-label,
+#clock-label {
+    font-size: 96px !important;
+    font-weight: 700 !important;
+    color: rgba(255, 255, 255, 0.96) !important;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(255, 255, 255, 0.80);
+    margin-top: -4px;
+}
+
+window #date-label,
+window.focused:not(.hidden) #date-label,
+#date-label {
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    color: rgba(255, 255, 255, 0.94) !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+#avatar-image {
+    border-radius: 44px;
+    border: 2px solid rgba(255, 255, 255, 0.38);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.50);
+    margin-bottom: 4px;
+}
+
+#user-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    margin-bottom: 4px;
+}
+
+/* Completely hide gtklock default label */
+#input-label {
+    opacity: 0;
+    font-size: 0;
+    min-height: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* macOS Liquid Glass Password Input Pill */
+#pill-box {
+    background-color: rgba(18, 22, 30, 0.60);
+    border: 1.2px solid rgba(255, 255, 255, 0.28);
+    border-radius: 20px;
+    padding: 3px 6px 3px 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.50);
+    min-width: 240px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#pill-box:focus-within {
+    border-color: rgba(10, 132, 255, 0.85);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 2px rgba(10, 132, 255, 0.40), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+#input-field {
+    background: transparent;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.96);
+    font-size: 14px;
+    caret-color: #0a84ff;
+}
+
+#input-field placeholder {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 12.5px;
+}
+
+#unlock-button {
+    background-color: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 14px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.85);
+    font-family: "Symbols Nerd Font", sans-serif;
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+
+#unlock-button:hover {
+    background-color: #0a84ff;
+    border-color: #0a84ff;
+    color: white;
+}
+
+#unlock-button:active {
+    background-color: #0071e3;
+    transform: scale(0.95);
+}
+
+#error-label {
+    color: #ff453a;
+    font-size: 12.5px;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    margin-top: 2px;
+}
+
+#warning-label {
+    color: #ff9f0a;
+    font-size: 12px;
+}

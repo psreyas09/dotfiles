@@ -3,6 +3,12 @@ import os
 import sys
 import signal
 
+# Auto-reap child processes to prevent defunct/zombie processes
+try:
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+except Exception:
+    pass
+
 PID_FILE = "/tmp/waybar_power_menu.pid"
 
 def check_single_instance():
@@ -220,7 +226,7 @@ class CaelestiaPowerMenu(Gtk.Window):
 
     # --- Actions ---
     def action_lock(self, *_):
-        self.close_animated(action=["swaylock"])
+        self.close_animated(action=["/home/sreyas/.config/niri/lock-screen.sh"])
 
     def action_suspend(self, *_):
         self.close_animated(action=["systemctl", "suspend"])

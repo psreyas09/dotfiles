@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Auto-lock (swayidle) management script with persistent state saving
-LOCK_CMD="swaylock -f --screenshots --clock --indicator --effect-blur 7x5"
+LOCK_CMD="/home/sreyas/.config/niri/lock-screen.sh"
 TIMEOUT=300
 
 CONF_FILE="$HOME/.config/niri/autolock.json"

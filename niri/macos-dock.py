@@ -21,21 +21,30 @@ PID_FILE = "/tmp/macos_dock.pid"
 PINNED_CONFIG_FILE = os.path.expanduser("~/.config/niri/dock-pinned.json")
 DOTFILE_PINNED_FILE = os.path.expanduser("~/dotfile/niri/dock-pinned.json")
 
+_lock_fd = None
+
 def enforce_single_instance():
-    if os.path.exists(PID_FILE):
-        try:
-            with open(PID_FILE, "r") as f:
-                old_pid = int(f.read().strip())
-            if old_pid != os.getpid():
-                os.kill(old_pid, signal.SIGTERM)
-                time.sleep(0.1)
-        except (OSError, ValueError):
-            pass
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
+    global _lock_fd
+    import fcntl
+    try:
+        _lock_fd = open(PID_FILE, "w")
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fd.write(str(os.getpid()))
+        _lock_fd.flush()
+    except (IOError, BlockingIOError):
+        print("Another instance of macos-dock is already running. Exiting.", file=sys.stderr)
+        sys.exit(0)
 
 def cleanup(*_):
+    global _lock_fd
     try:
+        if _lock_fd:
+            import fcntl
+            try:
+                fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                _lock_fd.close()
+            except Exception:
+                pass
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
     except OSError:

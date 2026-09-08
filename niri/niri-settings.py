@@ -583,6 +583,8 @@ def set_howdy_status(enable: bool, callback=None):
         if callback:
             GLib.idle_add(callback, success, final_state)
 
+    threading.Thread(target=worker, daemon=True).start()
+
 
 AUTOLOCK_CONF_PATH = os.path.expanduser("~/.config/niri/autolock.json")
 DOTFILE_AUTOLOCK_PATH = os.path.expanduser("~/dotfile/niri/autolock.json")
@@ -2604,7 +2606,22 @@ class NiriSettingsApp(Gtk.Window):
         # Howdy Face Recognition Quick Toggle
         power_face_switch = Gtk.Switch()
         power_face_switch.set_active(get_howdy_status())
-        power_face_switch.connect("state-set", lambda sw, st: set_howdy_status(st, lambda ok, final: sw.set_active(final)))
+        power_face_updating = False
+        def on_power_face_toggled(sw, st):
+            nonlocal power_face_updating
+            if power_face_updating:
+                return False
+            power_face_updating = True
+            sw.set_sensitive(False)
+            def on_done(ok, final):
+                nonlocal power_face_updating
+                sw.set_active(final)
+                sw.set_state(final)
+                sw.set_sensitive(True)
+                power_face_updating = False
+            set_howdy_status(st, on_done)
+            return True
+        power_face_switch.connect("state-set", on_power_face_toggled)
         lock_card.add_row(create_setting_row(
             "dialog-password",
             "Howdy Face Recognition Unlock",
@@ -2618,7 +2635,7 @@ class NiriSettingsApp(Gtk.Window):
         vbox.pack_start(action_card, False, False, 0)
 
         lock_btn = Gtk.Button(label="Lock Screen Now")
-        lock_btn.connect("clicked", lambda *_: async_cmd("swaylock"))
+        lock_btn.connect("clicked", lambda *_: async_cmd("/home/sreyas/.config/niri/lock-screen.sh"))
         action_card.add_row(create_setting_row("system-lock-screen", "Lock Session", "Immediately lock session and turn off screen illumination", lock_btn))
 
         suspend_btn = Gtk.Button(label="Suspend PC")
@@ -2649,12 +2666,20 @@ class NiriSettingsApp(Gtk.Window):
         status_lbl = Gtk.Label(label="Active in PAM" if is_howdy_on else "Disabled (Password Only)")
         status_lbl.set_name("badge-label-active" if is_howdy_on else "badge-label-muted")
 
+        is_toggling_howdy = False
         def on_howdy_toggled(switch, state):
+            nonlocal is_toggling_howdy
+            if is_toggling_howdy:
+                return False
+            is_toggling_howdy = True
             switch.set_sensitive(False)
             status_lbl.set_text("Updating...")
             def on_done(success, final_state):
-                switch.set_sensitive(True)
+                nonlocal is_toggling_howdy
                 switch.set_active(final_state)
+                switch.set_state(final_state)
+                switch.set_sensitive(True)
+                is_toggling_howdy = False
                 if final_state:
                     status_lbl.set_text("Active in PAM")
                     status_lbl.set_name("badge-label-active")
@@ -2662,6 +2687,7 @@ class NiriSettingsApp(Gtk.Window):
                     status_lbl.set_text("Disabled (Password Only)")
                     status_lbl.set_name("badge-label-muted")
             set_howdy_status(state, on_done)
+            return True
 
         face_switch.connect("state-set", on_howdy_toggled)
 

@@ -92,6 +92,18 @@
     ]
   },
   {
+    "name": "Strawberry",
+    "icon": [
+      "strawberry",
+      "org.strawberrymusicplayer.strawberry"
+    ],
+    "cmd": "strawberry",
+    "app_ids": [
+      "org.strawberrymusicplayer.strawberry",
+      "strawberry"
+    ]
+  },
+  {
     "name": "Settings",
     "icon": [
       "preferences-system",
