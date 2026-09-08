@@ -24,11 +24,12 @@ PID_FILE = "/tmp/waybar_media_popup.pid"
 app_instance = None
 
 def toggle_or_exit():
+    """If daemon is running, send SIGUSR1 to toggle it and exit immediately. Otherwise fall through to start daemon."""
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, "r") as f:
                 pid = int(f.read().strip())
-            os.kill(pid, 0)
+            os.kill(pid, 0)          # check process alive
             os.kill(pid, signal.SIGUSR1)
             sys.exit(0)
         except (OSError, ValueError):
@@ -37,10 +38,8 @@ def toggle_or_exit():
             except OSError:
                 pass
 
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
 def cleanup(*_):
+    """Full quit — called only on SIGTERM/SIGINT."""
     global app_instance
     try:
         if app_instance and hasattr(app_instance, "cava") and app_instance.cava:
@@ -861,6 +860,28 @@ class MediaPopup(Gtk.Window):
             return False
         return True
 
+    def toggle_window(self, *_):
+        """Toggle show/hide — called by SIGUSR1 from waybar click."""
+        if self.get_visible() and not self.is_closing:
+            self.close_animated()
+        else:
+            self.show_animated()
+
+    def show_animated(self, *_):
+        """Re-show the popup with entrance animation and restart CAVA."""
+        self.is_closing = False
+        self.anim_start = None
+        Gtk.Widget.set_opacity(self, 0.0)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
+        if hasattr(self, "cava") and self.cava and not self.cava.running:
+            self.cava.proc = None
+            self.cava.start()
+            if hasattr(self, "cover_vis"):
+                self.cover_vis.set_audio_provider(self.cava)
+        self.update_all()
+        self.show_all()
+        self.add_tick_callback(self.on_animate_in)
+
     def close_animated(self, *_):
         if self.is_closing:
             return
@@ -868,11 +889,6 @@ class MediaPopup(Gtk.Window):
         self.close_start = None
         if hasattr(self, "cava") and self.cava:
             self.cava.stop()
-        try:
-            if os.path.exists(PID_FILE):
-                os.remove(PID_FILE)
-        except OSError:
-            pass
         self.add_tick_callback(self.on_animate_out)
 
     def on_animate_out(self, widget, frame_clock):
@@ -888,7 +904,8 @@ class MediaPopup(Gtk.Window):
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, curr_margin)
 
         if progress >= 1.0:
-            cleanup()
+            self.hide()
+            self.is_closing = False
             return False
         return True
 
@@ -1954,15 +1971,24 @@ class MediaPopup(Gtk.Window):
 
 def main():
     global app_instance
+    # If daemon already running, toggle it via SIGUSR1 and exit immediately
     toggle_or_exit()
+
+    # Write PID file (stays alive for the lifetime of the daemon)
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
 
     app = MediaPopup()
     app_instance = app
-    signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.close_animated))
 
-    app.show_all()
+    # SIGUSR1 = toggle show/hide (instant, no cold-start)
+    signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.toggle_window))
+
+    # Start hidden — first click will show via SIGUSR1
+    app.hide()
     Gtk.main()
 
 if __name__ == "__main__":

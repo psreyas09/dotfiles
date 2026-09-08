@@ -286,6 +286,8 @@ spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-m
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/dashboard.py" "--daemon"
 // Keep the app grid hot: icons are decoded once at login instead of after opening it.
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py" "--daemon"
+// Keep media popup hot: pre-loaded at login so music widget click is instant.
+spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/media-popup.py"
 
 
 //spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"
