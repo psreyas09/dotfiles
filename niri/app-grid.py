@@ -4,6 +4,10 @@ import sys
 import signal
 
 PID_FILE = "/tmp/gnome_app_grid.pid"
+# The overlay is kept resident so opening it feels immediate; a slightly longer
+# entrance lets the blurred wallpaper and launcher contents settle together.
+FADE_IN_MS = 220
+FADE_OUT_MS = 160
 
 def is_pid_alive(pid):
     try:
@@ -66,12 +70,31 @@ def cleanup():
     Gtk.main_quit()
 
 
+_ICON_PIXBUFS = {}
+
+
 def get_app_image(app_info, size=72):
+    """Resolve icon pixels while the hidden daemon starts, never on first show."""
     gicon = app_info.get_icon()
     if gicon:
-        img = Gtk.Image.new_from_gicon(gicon, Gtk.IconSize.DIALOG)
-        img.set_pixel_size(size)
-        return img
+        try:
+            icon_key = f"{size}:{gicon.to_string()}"
+            pixbuf = _ICON_PIXBUFS.get(icon_key)
+            if pixbuf is None:
+                icon_theme = Gtk.IconTheme.get_default()
+                icon_info = icon_theme.lookup_by_gicon(
+                    gicon, size, Gtk.IconLookupFlags.FORCE_SIZE
+                )
+                if icon_info:
+                    pixbuf = icon_info.load_icon()
+                    _ICON_PIXBUFS[icon_key] = pixbuf
+            if pixbuf is not None:
+                img = Gtk.Image.new_from_pixbuf(pixbuf)
+                img.set_can_focus(False)
+                return img
+        except Exception:
+            pass
+
     img = Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
     img.set_pixel_size(size)
     return img
@@ -130,11 +153,17 @@ class AppGridOverlay(Gtk.Window):
         self.set_title("Applications")
         self.set_name("gnome-app-grid-window")
         self.active_category = "All"
+        self._fade_source = None
+        self._is_closing = False
 
         # Layer Shell Setup for Fullscreen Overlay
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, "app-grid")
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
+        # Do not honour another layer surface's reserved space (Waybar).  The
+        # launcher is a true screen overlay, so its blurred backdrop must run
+        # behind the bar as well as the desktop.
+        GtkLayerShell.set_exclusive_zone(self, 0)
         GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.EXCLUSIVE)
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.TOP, True)
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.BOTTOM, True)
@@ -145,6 +174,7 @@ class AppGridOverlay(Gtk.Window):
         self.connect("key-press-event", self.on_key_press)
         self.connect("button-press-event", self.on_backdrop_clicked)
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.on_sigusr1)
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, self.on_sigusr2)
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (cleanup(), False)[1])
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: (cleanup(), False)[1])
 
@@ -162,23 +192,68 @@ class AppGridOverlay(Gtk.Window):
         self.toggle_overlay()
         return True
 
+    def on_sigusr2(self):
+        """Reload the blurred wallpaper background (sent by wallpaper-picker after wallpaper change)."""
+        if os.path.exists(BLURRED_WALL_PATH):
+            try:
+                self.background.set_from_file(BLURRED_WALL_PATH)
+                self.backdrop.queue_draw()
+            except GLib.Error:
+                pass
+        return True
+
     def toggle_overlay(self):
-        if self.get_visible():
+        if self.get_visible() and not self._is_closing:
             self.hide_overlay()
         else:
             self.show_overlay()
 
     def hide_overlay(self, *_):
+        if not self.get_visible() or self._is_closing:
+            return
+        self._is_closing = True
+        self._animate_opacity(0.0, FADE_OUT_MS, self._finish_hide)
+
+    def _finish_hide(self):
         self.hide()
+        self.set_opacity(1.0)
+        self._is_closing = False
         self.search_entry.set_text("")
         self.on_category_clicked(None, "All")
 
     def show_overlay(self, *_):
-        self.show_all()
-        self.present()
+        self._is_closing = False
+        self._stop_fade()
         self.search_entry.set_text("")
         self.on_category_clicked(None, "All")
-        self.search_entry.grab_focus()
+        self.set_opacity(0.0)
+        self.show_all()
+        self.present()
+        self._animate_opacity(1.0, FADE_IN_MS, self.search_entry.grab_focus)
+
+    def _stop_fade(self):
+        if self._fade_source is not None:
+            GLib.source_remove(self._fade_source)
+            self._fade_source = None
+
+    def _animate_opacity(self, target, duration_ms, on_done=None):
+        self._stop_fade()
+        start = self.get_opacity()
+        started_at = time.monotonic()
+
+        def tick():
+            progress = min(1.0, (time.monotonic() - started_at) * 1000 / duration_ms)
+            # Smoothstep keeps the fade quick while avoiding a harsh first frame.
+            eased = progress * progress * (3.0 - 2.0 * progress)
+            self.set_opacity(start + (target - start) * eased)
+            if progress >= 1.0:
+                self._fade_source = None
+                if on_done:
+                    on_done()
+                return False
+            return True
+
+        self._fade_source = GLib.timeout_add(1000 // 60, tick)
 
     def on_backdrop_clicked(self, widget, event):
         if event.window == self.get_window():
@@ -241,13 +316,39 @@ class AppGridOverlay(Gtk.Window):
             self.velocity = 0.0
 
     def setup_ui(self):
+        # Use the wallpaper-picker's pre-rendered blurred image as a real
+        # full-screen layer.  Previously BLURRED_WALL_PATH was defined but not
+        # displayed, which left the launcher with an opaque flat background.
+        self.backdrop = Gtk.Overlay()
+        self.backdrop.set_name("app-grid-backdrop")
+        self.add(self.backdrop)
+
+        self.background = Gtk.Image()
+        self.background.set_halign(Gtk.Align.FILL)
+        self.background.set_valign(Gtk.Align.FILL)
+        self.background.set_hexpand(True)
+        self.background.set_vexpand(True)
+        if os.path.exists(BLURRED_WALL_PATH):
+            try:
+                self.background.set_from_file(BLURRED_WALL_PATH)
+            except GLib.Error:
+                pass
+        self.backdrop.add(self.background)
+
+        # A light tint preserves readable labels without hiding the blur.
+        backdrop_dim = Gtk.Box()
+        backdrop_dim.set_name("app-grid-backdrop-dim")
+        backdrop_dim.set_hexpand(True)
+        backdrop_dim.set_vexpand(True)
+        self.backdrop.add_overlay(backdrop_dim)
+
         main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         main_vbox.set_halign(Gtk.Align.CENTER)
         main_vbox.set_valign(Gtk.Align.FILL)
         main_vbox.set_margin_top(28)
         main_vbox.set_margin_bottom(28)
         main_vbox.set_size_request(1140, -1)
-        self.add(main_vbox)
+        self.backdrop.add_overlay(main_vbox)
 
         # Top Bar: Spacer Left, Search Center, Close Right
         top_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -541,7 +642,15 @@ class AppGridOverlay(Gtk.Window):
         }}
 
         #gnome-app-grid-window {{
-            background-color: alpha(@bg-color, 0.90);
+            background-color: transparent;
+        }}
+
+        #app-grid-backdrop {{
+            background-color: @bg-color;
+        }}
+
+        #app-grid-backdrop-dim {{
+            background-color: rgba(8, 10, 18, 0.32);
         }}
 
         /* GNOME Centered Search Pill */

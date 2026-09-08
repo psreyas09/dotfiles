@@ -104,11 +104,17 @@ apply_wallpaper() {
             ;;
     esac
 
-    # 2. Restart backdrop with actual wallpaper — niri blurs it in real-time
+    # 2. Regenerate blurred backdrop and notify app-grid daemon to reload it
     (
         pkill -9 swaybg-backdrop 2>/dev/null
+        magick "$img" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
+        ffmpeg -y -i "$img" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
+        # Signal app-grid daemon to reload the blurred wallpaper
+        if [ -f /tmp/gnome_app_grid.pid ]; then
+            kill -USR2 "$(cat /tmp/gnome_app_grid.pid)" 2>/dev/null
+        fi
         sleep 0.1
-        nohup swaybg-backdrop -i "$img" -m fill > /dev/null 2>&1 &
+        nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
     ) &
 
     # 3. Generate dynamic color palette
@@ -167,9 +173,14 @@ restore_wallpaper() {
             ensure_swww
             swww img "$wall" --transition-type none 2>/dev/null || swww img "$wall" 2>/dev/null
 
-            # Use actual wallpaper for backdrop — niri blurs it in real-time
-            sleep 0.1
-            nohup swaybg-backdrop -i "$wall" -m fill > /dev/null 2>&1 &
+            # Always regenerate blurred cache on restore so it matches current wallpaper
+            magick "$wall" -resize 1920x1080^ -gravity center -extent 1920x1080 -blur 0x25 "$BLURRED_WALL" 2>/dev/null || \
+            ffmpeg -y -i "$wall" -vf "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,gblur=sigma=25" "$BLURRED_WALL" 2>/dev/null
+            # Signal app-grid daemon to reload the blurred wallpaper
+            if [ -f /tmp/gnome_app_grid.pid ]; then
+                kill -USR2 "$(cat /tmp/gnome_app_grid.pid)" 2>/dev/null
+            fi
+            nohup swaybg-backdrop -i "$BLURRED_WALL" -m fill > /dev/null 2>&1 &
             ;;
     esac
 }
