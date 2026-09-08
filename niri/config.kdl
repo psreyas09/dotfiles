@@ -203,15 +203,27 @@ layer-rule {
 
 
 
-// Place blurred wallpaper in the Overview backdrop
+// Place wallpaper in the Overview backdrop — niri blurs it in real-time
 layer-rule {
     match namespace="^backdrop$"
     place-within-backdrop true
+    background-effect {
+        blur true
+    }
 }
 
 // Hardware-accelerated background blur for Rofi Activities grid
 layer-rule {
     match namespace="^rofi$"
+    background-effect {
+        blur true
+    }
+}
+
+// The application launcher is a full-screen frosted overlay, including the
+// area occupied by Waybar's top layer.
+layer-rule {
+    match namespace="^app-grid$"
     background-effect {
         blur true
     }
@@ -272,6 +284,8 @@ spawn-at-startup "swaync"
 // spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"  // Managed by systemd user service: kbd-backlight-osd.service
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-menu.py" "--daemon"
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/dashboard.py" "--daemon"
+// Keep the app grid hot: icons are decoded once at login instead of after opening it.
+spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py" "--daemon"
 
 
 //spawn-at-startup "mpvpaper" "-o" "no-audio --loop-playlist --hwdec=nvdec --vf=scale=1920:1080" "eDP-1" "/home/sreyas/Downloads/backup-20250614T092941Z-1-001/backup/live/anime.mov"
@@ -298,7 +312,7 @@ binds {
     // --- Terminal & Apps ---
     Mod+Return { spawn "kitty"; }
     Mod+Space { spawn "fuzzel"; }
-    Mod+A { spawn "rofi" "-show" "All" "-theme" "/home/sreyas/.config/rofi/gnome-grid.rasi"; }
+    Mod+A { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/app-grid.py"; }
     Mod+B { spawn "firefox"; }
     Mod+N { spawn "nautilus"; }
     Mod+Comma { spawn "/usr/bin/python3" "/home/sreyas/.config/niri/niri-settings.py"; }
