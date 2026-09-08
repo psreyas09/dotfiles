@@ -54,7 +54,7 @@
         "format": " {:%I:%M %p}", 
         "format-alt": " {:%A, %B %d, %Y}",
         "tooltip": false,
-        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/dashboard.py",
+        "on-click": "bash $HOME/.config/waybar/scripts/popup-manager.sh dashboard",
         "actions": {
             "on-click-right": "mode"
         }
@@ -88,7 +88,7 @@
         "format-disabled": "󰂲",
         "max-length": 12,
         "tooltip-format-connected": "{device_alias}",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/bluetooth-popup.py",
+        "on-click": "bash $HOME/.config/waybar/scripts/popup-manager.sh bluetooth",
         "on-click-right": "blueman-manager"
     },
 
@@ -99,7 +99,7 @@
         "format-linked": "󰈀 {ifname}",
         "format-disconnected": "⚠ Disconnected",
         "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signalStrength}%\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/wifi-popup.py",
+        "on-click": "bash $HOME/.config/waybar/scripts/popup-manager.sh wifi",
         "on-click-right": "nm-connection-editor"
     },
 
@@ -153,7 +153,7 @@
 
     "custom/power": {
         "format": "⏻ ",
-        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/power-menu.py",
+        "on-click": "bash $HOME/.config/waybar/scripts/popup-manager.sh power",
         "tooltip": "Power Menu (Super+Escape)"
     },
 
@@ -172,7 +172,7 @@
         "return-type": "json",
         "max-length": 22,
         "exec": "$HOME/.config/waybar/mediaplayer.sh",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/media-popup.py",
+        "on-click": "bash $HOME/.config/waybar/scripts/popup-manager.sh media",
         "escape": false,
         "tooltip": false
     },
