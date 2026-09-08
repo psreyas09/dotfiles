@@ -440,6 +440,8 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
         self.scaled_art = None
         self.current_r_art = 45.0
         self.on_cover_clicked = None
+        self.cava_loading = False   # True while CAVA subprocess is starting
+        self.spinner_phase = 0.0   # Rotating angle for loading spinner
 
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self.on_clicked)
@@ -460,6 +462,9 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
 
     def set_audio_provider(self, provider):
         self.audio_bars_provider = provider
+        if provider is not None:
+            self.cava_loading = True
+            self.spinner_phase = 0.0
 
     def set_art_pixbuf(self, pixbuf):
         self.art_pixbuf = pixbuf
@@ -475,6 +480,11 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
 
         need_redraw = False
 
+        # Animate loading spinner while CAVA is starting up
+        if self.cava_loading:
+            self.spinner_phase = (self.spinner_phase + 3.5 * dt) % (2.0 * math.pi)
+            need_redraw = True
+
         if self.is_playing:
             live_data = None
             if not self.use_procedural and self.audio_bars_provider:
@@ -482,6 +492,7 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
 
             # Check if live audio spectrum has active audio:
             if live_data and any(v > 0.01 for v in live_data):
+                self.cava_loading = False   # CAVA is ready — hide spinner
                 for i in range(self.num_bars):
                     target = min(1.0, live_data[i] * 1.35)
                     if target > self.bars[i]:
@@ -525,28 +536,59 @@ class CircularCoverVisualizer(Gtk.DrawingArea):
         accent = self.colors.get('accent-purple', (0.71, 0.34, 0.36, 1.0))
         accent_blue = self.colors.get('accent-blue', (0.39, 0.43, 0.55, 1.0))
 
-        # 1. Draw radial visualizer bars around circle
+        # 1. Draw radial visualizer bars or loading spinner
         cr.set_line_cap(cairo.LINE_CAP_ROUND)
-        cr.set_line_width(2.5)
 
-        for i in range(self.num_bars):
-            theta = i * 2.0 * math.pi / self.num_bars - math.pi / 2.0
-            val = self.bars[i]
-            bar_len = 2.0 + val * max_len
+        if self.cava_loading:
+            # --- Spinning arc loader while CAVA is starting ---
+            sweep = math.pi * 0.65          # 117° arc length
+            num_steps = 48
+            cr.set_line_width(2.8)
+            for step in range(num_steps):
+                # t=0 → head of arc, t=1 → tail (fades out)
+                t = step / float(num_steps)
+                theta = self.spinner_phase - t * sweep
+                alpha = (1.0 - t) ** 1.6 * 0.92   # fade towards tail
+                # Blend accent → accent_blue along the sweep
+                r = accent[0] * (1.0 - t) + accent_blue[0] * t
+                g = accent[1] * (1.0 - t) + accent_blue[1] * t
+                b = accent[2] * (1.0 - t) + accent_blue[2] * t
+                cr.set_source_rgba(r, g, b, alpha)
+                # Draw a tiny stub at this angle on the bar ring
+                x0 = cx + r_start * math.cos(theta)
+                y0 = cy + r_start * math.sin(theta)
+                x1 = cx + (r_start + 8.0) * math.cos(theta)
+                y1 = cy + (r_start + 8.0) * math.sin(theta)
+                cr.move_to(x0, y0)
+                cr.line_to(x1, y1)
+                cr.stroke()
+            # Small pulsing dot at spinner head
+            head_x = cx + (r_start + 8.0) * math.cos(self.spinner_phase)
+            head_y = cy + (r_start + 8.0) * math.sin(self.spinner_phase)
+            cr.set_source_rgba(accent[0], accent[1], accent[2], 0.95)
+            cr.arc(head_x, head_y, 2.8, 0, 2.0 * math.pi)
+            cr.fill()
+        else:
+            # --- Normal radial visualizer bars ---
+            cr.set_line_width(2.5)
+            for i in range(self.num_bars):
+                theta = i * 2.0 * math.pi / self.num_bars - math.pi / 2.0
+                val = self.bars[i]
+                bar_len = 2.0 + val * max_len
 
-            t = (math.sin(theta) + 1.0) / 2.0
-            r = accent[0] * (1.0 - t) + accent_blue[0] * t
-            g = accent[1] * (1.0 - t) + accent_blue[1] * t
-            b = accent[2] * (1.0 - t) + accent_blue[2] * t
+                t = (math.sin(theta) + 1.0) / 2.0
+                r = accent[0] * (1.0 - t) + accent_blue[0] * t
+                g = accent[1] * (1.0 - t) + accent_blue[1] * t
+                b = accent[2] * (1.0 - t) + accent_blue[2] * t
 
-            cr.set_source_rgba(r, g, b, 0.85 if self.is_playing else 0.30)
-            x0 = cx + r_start * math.cos(theta)
-            y0 = cy + r_start * math.sin(theta)
-            x1 = cx + (r_start + bar_len) * math.cos(theta)
-            y1 = cy + (r_start + bar_len) * math.sin(theta)
-            cr.move_to(x0, y0)
-            cr.line_to(x1, y1)
-            cr.stroke()
+                cr.set_source_rgba(r, g, b, 0.85 if self.is_playing else 0.30)
+                x0 = cx + r_start * math.cos(theta)
+                y0 = cy + r_start * math.sin(theta)
+                x1 = cx + (r_start + bar_len) * math.cos(theta)
+                y1 = cy + (r_start + bar_len) * math.sin(theta)
+                cr.move_to(x0, y0)
+                cr.line_to(x1, y1)
+                cr.stroke()
 
         # 2. Draw circular album art inside circular mask
         diam = int(r_art * 2)
