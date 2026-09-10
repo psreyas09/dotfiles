@@ -27,6 +27,40 @@ WALLPAPER_DIR = "/home/sreyas/wall"
 CONFIG_KDL_PATH = "/home/sreyas/.config/niri/config.kdl"
 DOTFILE_KDL_PATH = "/home/sreyas/dotfile/niri/config.kdl"
 CURRENT_WALL_CACHE = "/home/sreyas/.cache/current_wallpaper"
+NIGHT_LIGHT_SCRIPT = "/home/sreyas/.config/niri/night-light.sh"
+NIGHT_LIGHT_CONFIG = "/home/sreyas/.config/niri/night-light.json"
+
+def get_night_light_state():
+    state = {"running": False, "enabled": False, "temperature": 4000, "brightness": 1.0}
+    if os.path.exists(NIGHT_LIGHT_CONFIG):
+        try:
+            with open(NIGHT_LIGHT_CONFIG, "r") as f:
+                data = json.load(f)
+                state["enabled"] = bool(data.get("enabled", False))
+                state["temperature"] = int(data.get("temperature", 4000))
+                state["brightness"] = float(data.get("brightness", 1.0))
+        except Exception:
+            pass
+    try:
+        res = subprocess.run(["pgrep", "-x", "gammastep"], stdout=subprocess.PIPE)
+        state["running"] = (res.returncode == 0)
+    except Exception:
+        pass
+    return state
+
+def set_night_light_enabled(enabled, temp=None, brightness=None):
+    if enabled:
+        cmd = [NIGHT_LIGHT_SCRIPT, "on"]
+        if temp is not None:
+            cmd.append(str(temp))
+            if brightness is not None:
+                cmd.append(str(brightness))
+        subprocess.Popen(cmd)
+    else:
+        subprocess.Popen([NIGHT_LIGHT_SCRIPT, "off"])
+
+def set_night_light_params(temp, brightness=1.0):
+    subprocess.Popen([NIGHT_LIGHT_SCRIPT, "set", str(temp), str(brightness)])
 
 def parse_theme_colors():
     colors = {
@@ -1411,6 +1445,147 @@ class NiriSettingsApp(Gtk.Window):
             "Variable Refresh Rate (VRR / FreeSync)",
             "Dynamically scales refresh rate between 60 Hz (idle) and 120 Hz (motion) to save battery",
             vrr_switch
+        ))
+
+        # -------------------------------------------------------------
+        # NIGHT LIGHT / EYE COMFORT CARD
+        # -------------------------------------------------------------
+        nl_card = SettingsCard()
+        vbox.pack_start(nl_card, False, False, 0)
+
+        nl_state = get_night_light_state()
+        cur_k = max(2400, min(6500, nl_state["temperature"]))
+        cur_warmth = int(round((6500 - cur_k) / (6500 - 2400) * 100))
+        cur_bright = int(round(nl_state["brightness"] * 100))
+
+        nl_controls = []
+
+        # Master Toggle Switch
+        nl_switch = Gtk.Switch()
+        nl_is_active = nl_state["enabled"] or nl_state["running"]
+        nl_switch.set_active(nl_is_active)
+
+        nl_card.add_row(create_setting_row(
+            "night-light-symbolic",
+            "Night Light (Eye Comfort)",
+            "Warm up display colors to reduce eye fatigue and blue light exposure",
+            nl_switch
+        ))
+
+        # Warmth / Color Temperature Slider
+        temp_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        temp_val_lbl = Gtk.Label(label=f"{cur_k} K")
+        temp_val_lbl.set_name("row-subtitle")
+        temp_val_lbl.set_width_chars(7)
+
+        temp_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        temp_scale.set_value(cur_warmth)
+        temp_scale.set_size_request(200, -1)
+        temp_scale.set_tooltip_text("Slide right for warmer amber light")
+        temp_scale.set_sensitive(nl_is_active)
+        nl_controls.append(temp_scale)
+
+        temp_row_box.pack_start(temp_scale, True, True, 0)
+        temp_row_box.pack_start(temp_val_lbl, False, False, 0)
+
+        # Brightness / Soft Dimming Slider
+        bright_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        bright_val_lbl = Gtk.Label(label=f"{cur_bright}%")
+        bright_val_lbl.set_name("row-subtitle")
+        bright_val_lbl.set_width_chars(5)
+
+        bright_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 50, 100, 5)
+        bright_scale.set_value(cur_bright)
+        bright_scale.set_size_request(200, -1)
+        bright_scale.set_tooltip_text("Screen gamma brightness attenuation")
+        bright_scale.set_sensitive(nl_is_active)
+        nl_controls.append(bright_scale)
+
+        bright_row_box.pack_start(bright_scale, True, True, 0)
+        bright_row_box.pack_start(bright_val_lbl, False, False, 0)
+
+        # Debounced applier
+        apply_timer = [None]
+        def queue_apply_night_light():
+            if apply_timer[0] is not None:
+                GLib.source_remove(apply_timer[0])
+            def do_apply():
+                apply_timer[0] = None
+                w_val = temp_scale.get_value()
+                k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+                b = round(bright_scale.get_value() / 100.0, 2)
+                if nl_switch.get_active():
+                    set_night_light_params(k, b)
+                return False
+            apply_timer[0] = GLib.timeout_add(70, do_apply)
+
+        def on_temp_changed(scale):
+            w_val = scale.get_value()
+            k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+            temp_val_lbl.set_text(f"{k} K")
+            queue_apply_night_light()
+
+        def on_bright_changed(scale):
+            b_val = int(scale.get_value())
+            bright_val_lbl.set_text(f"{b_val}%")
+            queue_apply_night_light()
+
+        temp_scale.connect("value-changed", on_temp_changed)
+        bright_scale.connect("value-changed", on_bright_changed)
+
+        def on_switch_toggled(sw, state):
+            for c in nl_controls:
+                c.set_sensitive(state)
+            w_val = temp_scale.get_value()
+            k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+            b = round(bright_scale.get_value() / 100.0, 2)
+            set_night_light_enabled(state, k, b)
+            return False
+
+        nl_switch.connect("state-set", on_switch_toggled)
+
+        nl_card.add_row(create_setting_row(
+            "preferences-desktop-display",
+            "Warmth Intensity",
+            "Color temperature (higher intensity gives a warmer amber tint)",
+            temp_row_box
+        ))
+
+        nl_card.add_row(create_setting_row(
+            "display-brightness",
+            "Night Light Dimming",
+            "Softer contrast and brightness level for low-light environments",
+            bright_row_box
+        ))
+
+        # Preset Chips Row
+        preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        preset_box.set_sensitive(nl_is_active)
+        nl_controls.append(preset_box)
+
+        presets = [
+            ("Mild", 5500),
+            ("Comfort", 4000),
+            ("Deep Warm", 3200),
+            ("Candle", 2500),
+        ]
+        for name, k_target in presets:
+            pct = int(round((6500 - k_target) / (6500 - 2400) * 100))
+            btn = Gtk.Button(label=f"{name} ({k_target}K)")
+            def make_cb(target_pct):
+                def _cb(_):
+                    temp_scale.set_value(target_pct)
+                    if not nl_switch.get_active():
+                        nl_switch.set_active(True)
+                return _cb
+            btn.connect("clicked", make_cb(pct))
+            preset_box.pack_start(btn, True, True, 0)
+
+        nl_card.add_row(create_setting_row(
+            "starred-symbolic",
+            "Warmth Presets",
+            "Instant color temperature profiles for common lighting conditions",
+            preset_box
         ))
 
         return scroll

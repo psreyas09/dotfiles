@@ -297,6 +297,7 @@ spawn-at-startup "/home/sreyas/.config/niri/toggle-autolock.sh" "--startup"
 spawn-at-startup "/home/sreyas/.config/niri/wallpaper-picker.sh" "--restore"
 // Start from Niri so GTK inherits the active Wayland display.
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/niri/macos-dock.py"
+spawn-at-startup "/home/sreyas/.config/niri/night-light.sh" "restore"
 
 
 binds {
