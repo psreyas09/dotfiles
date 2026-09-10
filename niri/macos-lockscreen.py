@@ -141,8 +141,8 @@ def get_system_status():
     # 3. Wi-Fi
     wifi_info = {"connected": False, "signal": 0}
     try:
-        res = subprocess.run(["nmcli", "-t", "-f", "active,ssid,signal", "dev", "wifi"],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=0.5)
+        res = subprocess.run(["nmcli", "-t", "-f", "active,ssid,signal", "dev", "wifi", "--rescan", "no"],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=0.2)
         if res.returncode == 0:
             for line in res.stdout.strip().split("\n"):
                 if line.startswith("yes:"):
@@ -216,7 +216,7 @@ def get_active_player_info():
     except Exception:
         return None
 
-def fetch_art_pixbuf(art_url, size=82):
+def fetch_art_pixbuf(art_url, size=82, on_loaded_callback=None):
     if not art_url:
         return None
     local_path = None
@@ -228,13 +228,18 @@ def fetch_art_pixbuf(art_url, size=82):
         if os.path.exists(cached) and os.path.getsize(cached) > 0:
             local_path = cached
         else:
-            try:
-                req = urllib.request.Request(art_url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=1.5) as resp, open(cached, "wb") as f:
-                    f.write(resp.read())
-                local_path = cached
-            except Exception:
-                return None
+            # Download asynchronously in background thread so UI is never blocked
+            def _async_download():
+                try:
+                    req = urllib.request.Request(art_url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=3.0) as resp, open(cached, "wb") as f:
+                        f.write(resp.read())
+                    if on_loaded_callback:
+                        GLib.idle_add(on_loaded_callback)
+                except Exception:
+                    pass
+            threading.Thread(target=_async_download, daemon=True).start()
+            return None
     elif os.path.exists(art_url):
         local_path = art_url
 
@@ -1031,7 +1036,13 @@ class MacOSLockWindow(Gtk.Window):
         self.time_str = time.strftime("%-I:%M", now)
         self.ampm_str = time.strftime("%p", now)
 
-        self.system_status = get_system_status()
+        self.system_status = {
+            "battery": {"percent": 100, "charging": False, "status": "Full"},
+            "audio": {"volume": 0.5, "muted": False},
+            "wifi": {"connected": True, "signal": 80},
+            "dnd": False,
+            "bluetooth": {"connected": False, "name": ""}
+        }
         self._status_updating = False
         self.status_bar_da = None
         self.weather_str = ""
@@ -1066,8 +1077,9 @@ class MacOSLockWindow(Gtk.Window):
 
         self.setup_ui()
         if self.is_primary:
+            self.update_status()
             self.refresh_weather_async()
-            self.update_media()
+            GLib.idle_add(self.update_media)
 
     def setup_ui(self):
         self.overlay = Gtk.Overlay()
@@ -2009,7 +2021,12 @@ class MacOSLockWindow(Gtk.Window):
         art_url = info.get("art_url")
         if art_url != self.current_art_url:
             self.current_art_url = art_url
-            self.art_pixbuf = fetch_art_pixbuf(art_url, size=80)
+            def on_art_loaded():
+                self.art_pixbuf = fetch_art_pixbuf(self.current_art_url, size=80)
+                if hasattr(self, 'art_da') and self.art_da:
+                    self.art_da.queue_draw()
+                return False
+            self.art_pixbuf = fetch_art_pixbuf(art_url, size=80, on_loaded_callback=on_art_loaded)
             self.art_da.queue_draw()
 
         if hasattr(self, 'music_glass_da') and self.music_glass_da:

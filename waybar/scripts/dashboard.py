@@ -111,6 +111,12 @@ class DashboardWindow(Gtk.Window):
         self.set_title("Caelestia Dashboard")
         self.set_resizable(False)
 
+        # Ensure transparent RGBA visual so rounded corners have no black background
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+
         # Layer Shell setup - placed on OVERLAY so it sits directly on top of client windows
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.OVERLAY)
@@ -778,6 +784,93 @@ class DashboardWindow(Gtk.Window):
 
         return root
 
+    @staticmethod
+    def resolve_window_app_display(raw_app_id, raw_title):
+        app_id = (raw_app_id or "app").lower()
+        title = (raw_title or "").strip()
+
+        # Files / File Managers -> show directory name from title
+        if any(k in app_id for k in ["nautilus", "files", "thunar", "dolphin", "nemo", "pcmanfm"]):
+            icon = "󰉋"
+            clean_dir = title.split(" — ")[0].split(" - ")[0].strip()
+            if "/" in clean_dir:
+                clean_dir = clean_dir.rstrip("/").split("/")[-1]
+            app_clean = clean_dir if clean_dir else "Files"
+            return icon, app_clean[:14]
+
+        # Web Browsers
+        if "zen" in app_id:
+            return "󰈹", "Zen"
+        if "firefox" in app_id or "librewolf" in app_id:
+            return "󰈹", "Firefox"
+        if any(k in app_id for k in ["chrome", "chromium", "brave", "edge"]):
+            return "", "Chrome" if "chrome" in app_id else "Brave" if "brave" in app_id else "Browser"
+
+        # Terminal Emulators
+        if any(k in app_id for k in ["kitty", "alacritty", "foot", "wezterm", "ghostty", "terminal"]):
+            return "", "Terminal"
+
+        # Music & Audio
+        if "tauon" in app_id:
+            return "󰝚", "Tauon"
+        if "spotify" in app_id:
+            return "󰓇", "Spotify"
+        if any(k in app_id for k in ["youtube-music", "youtube music", "ytm"]):
+            return "󰗃", "YT Music"
+        if any(k in app_id for k in ["amberol", "rhythmbox", "audacious"]):
+            return "󰝚", "Music"
+
+        # Communication & Social
+        if any(k in app_id for k in ["discord", "vesktop", "webcord"]):
+            return "󰙯", "Discord"
+        if "telegram" in app_id:
+            return "󰏲", "Telegram"
+        if "rambox" in app_id:
+            return "󰗃", "Rambox"
+        if "slack" in app_id:
+            return "󰒱", "Slack"
+        if "whatsapp" in app_id:
+            return "󰖣", "WhatsApp"
+
+        # Code & Development
+        if any(k in app_id for k in ["code", "vscode", "codium"]):
+            return "󰨞", "VS Code"
+        if any(k in app_id for k in ["nvim", "neovim"]):
+            return "", "Neovim"
+        if any(k in app_id for k in ["texteditor", "gedit", "kate"]):
+            return "󰷈", "Editor"
+        if "obsidian" in app_id:
+            return "󰠮", "Obsidian"
+        if any(k in app_id for k in ["jetbrains", "pycharm", "idea", "clion", "webstorm"]):
+            return "󱤓", "IDE"
+
+        # Documents & Viewers
+        if any(k in app_id for k in ["evince", "zathura", "okular", "pdf"]):
+            return "󰈦", "Evince" if "evince" in app_id else "Document"
+        if any(k in app_id for k in ["libreoffice", "calc", "writer", "impress"]):
+            return "󰈙", "Office"
+        if any(k in app_id for k in ["mpv", "vlc", "totem", "celluloid"]):
+            return "󰕼", "Video"
+        if any(k in app_id for k in ["loupe", "eog", "imv", "viewnior"]):
+            return "󰋩", "Viewer"
+        if any(k in app_id for k in ["gimp", "inkscape", "krita"]):
+            return "󰽉", "Graphics"
+
+        # System & Settings
+        if "settings" in app_id or "control-center" in app_id:
+            return "󰒓", "Settings"
+        if "pavucontrol" in app_id:
+            return "󰕾", "Audio"
+        if "blueman" in app_id:
+            return "󰂯", "Bluetooth"
+        if "steam" in app_id:
+            return "󰓓", "Steam"
+
+        # Generic Clean fallback: parse reverse-DNS (org.gnome.App -> App, com.example.App -> App)
+        last_segment = (raw_app_id or "App").split(".")[-1]
+        clean_name = last_segment.replace("-", " ").replace("_", " ").title()
+        return "󰖯", clean_name[:12]
+
     def refresh_workspaces(self):
         for child in self.workspaces_container.get_children():
             self.workspaces_container.remove(child)
@@ -847,16 +940,15 @@ class DashboardWindow(Gtk.Window):
             else:
                 for win in ws_wins:
                     win_id = win.get("id")
-                    app_id = (win.get("app_id") or "app").lower()
                     title = win.get("title") or "Window"
                     is_focused = win.get("is_focused", False)
 
-                    icon = "󰈹" if "zen" in app_id or "firefox" in app_id else "" if "kitty" in app_id else "󰝚" if "tauon" in app_id else "󰗃" if "rambox" in app_id else "󰣆"
-                    app_clean = "Zen" if "zen" in app_id else "Terminal" if "kitty" in app_id else "Tauon" if "tauon" in app_id else "Rambox" if "rambox" in app_id else app_id[:9]
+                    icon, app_clean = self.resolve_window_app_display(win.get("app_id"), title)
 
                     # Interactive Window Button inside Workspace
                     w_item = Gtk.Button()
                     w_item.get_style_context().add_class("ws-win-btn")
+                    w_item.set_tooltip_text(f"{title} ({win.get('app_id') or 'app'})")
                     if is_focused:
                         w_item.get_style_context().add_class("ws-win-focused")
 
@@ -1291,7 +1383,7 @@ class DashboardWindow(Gtk.Window):
             border-radius: 26px;
             padding: 16px 20px 20px 20px;
             min-width: 820px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+            box-shadow: none;
         }}
 
         /* Header Tabs */

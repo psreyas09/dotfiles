@@ -253,10 +253,10 @@ layer-rule {
     }
     shadow {
         on
-        softness 40
-        spread 8
+        softness 35
+        spread 0
         offset x=0 y=6
-        color "#00000080"
+        color "#00000055"
     }
     geometry-corner-radius 26
 }
