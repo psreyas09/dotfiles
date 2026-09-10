@@ -55,6 +55,11 @@ calendar label {
     text-shadow: none;
 }
 
+#clock:hover {
+    background-color: alpha(@bg-color, 0.95); /* less transparent */
+    border: none;
+}
+
 #workspaces button {
     color: @comment-color;
     padding: 0 8px;
