@@ -37,7 +37,7 @@ TAB_FILE = "/tmp/waybar_dashboard_tab"
 THEME_CSS = "/home/sreyas/.config/waybar/current-theme.css"
 # A short grace period lets the pointer travel from the clock trigger into the
 # dashboard card without reversing the opening animation midway.
-HOVER_HIDE_DELAY_MS = 650
+HOVER_HIDE_DELAY_MS = 250
 app_instance = None
 
 def parse_theme_colors():
