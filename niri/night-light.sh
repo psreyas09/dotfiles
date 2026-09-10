@@ -39,7 +39,15 @@ apply_state() {
     local temp="$1"
     local brightness="${2:-1.0}"
     pkill -x gammastep 2>/dev/null || true
-    sleep 0.05
+    local count=0
+    while pgrep -x gammastep >/dev/null && [ $count -lt 15 ]; do
+        sleep 0.02
+        count=$((count + 1))
+    done
+    if pgrep -x gammastep >/dev/null; then
+        pkill -9 -x gammastep 2>/dev/null || true
+        sleep 0.02
+    fi
     nohup "$BIN" -m wayland -O "$temp" -b "$brightness:$brightness" >/dev/null 2>&1 &
 }
 
@@ -61,11 +69,11 @@ case "${1:-status}" in
         stop_night_light
         ;;
     set)
-        TEMP="$2"
-        BRIGHTNESS="${3:-1.0}"
         read_config
+        TEMP="${2:-$TEMP}"
+        BRIGHTNESS="${3:-$BRIGHTNESS}"
         write_config "$([ "$ENABLED" = "true" ] && echo 'True' || echo 'False')" "$TEMP" "$BRIGHTNESS"
-        if pgrep -x gammastep >/dev/null; then
+        if [ "$ENABLED" = "true" ] || pgrep -x gammastep >/dev/null; then
             apply_state "$TEMP" "$BRIGHTNESS"
         fi
         ;;

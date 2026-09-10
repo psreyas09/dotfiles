@@ -1454,8 +1454,8 @@ class NiriSettingsApp(Gtk.Window):
         vbox.pack_start(nl_card, False, False, 0)
 
         nl_state = get_night_light_state()
-        cur_k = max(2400, min(6500, nl_state["temperature"]))
-        cur_warmth = int(round((6500 - cur_k) / (6500 - 2400) * 100))
+        cur_k = max(2000, min(6500, nl_state["temperature"]))
+        cur_warmth = int(round((6500 - cur_k) / (6500 - 2000) * 100))
         cur_bright = int(round(nl_state["brightness"] * 100))
 
         nl_controls = []
@@ -1512,7 +1512,7 @@ class NiriSettingsApp(Gtk.Window):
             def do_apply():
                 apply_timer[0] = None
                 w_val = temp_scale.get_value()
-                k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+                k = int(round(6500 - (w_val / 100.0) * (6500 - 2000)))
                 b = round(bright_scale.get_value() / 100.0, 2)
                 if nl_switch.get_active():
                     set_night_light_params(k, b)
@@ -1521,7 +1521,7 @@ class NiriSettingsApp(Gtk.Window):
 
         def on_temp_changed(scale):
             w_val = scale.get_value()
-            k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+            k = int(round(6500 - (w_val / 100.0) * (6500 - 2000)))
             temp_val_lbl.set_text(f"{k} K")
             queue_apply_night_light()
 
@@ -1537,7 +1537,7 @@ class NiriSettingsApp(Gtk.Window):
             for c in nl_controls:
                 c.set_sensitive(state)
             w_val = temp_scale.get_value()
-            k = int(round(6500 - (w_val / 100.0) * (6500 - 2400)))
+            k = int(round(6500 - (w_val / 100.0) * (6500 - 2000)))
             b = round(bright_scale.get_value() / 100.0, 2)
             set_night_light_enabled(state, k, b)
             return False
@@ -1565,20 +1565,22 @@ class NiriSettingsApp(Gtk.Window):
 
         presets = [
             ("Mild", 5500),
-            ("Comfort", 4000),
-            ("Deep Warm", 3200),
-            ("Candle", 2500),
+            ("Comfort", 4200),
+            ("Deep Warm", 3000),
+            ("Candlelight", 2000),
         ]
         for name, k_target in presets:
-            pct = int(round((6500 - k_target) / (6500 - 2400) * 100))
+            pct = int(round((6500 - k_target) / (6500 - 2000) * 100))
             btn = Gtk.Button(label=f"{name} ({k_target}K)")
-            def make_cb(target_pct):
+            def make_cb(target_pct, target_k):
                 def _cb(_):
                     temp_scale.set_value(target_pct)
+                    b = round(bright_scale.get_value() / 100.0, 2)
                     if not nl_switch.get_active():
                         nl_switch.set_active(True)
+                    set_night_light_params(target_k, b)
                 return _cb
-            btn.connect("clicked", make_cb(pct))
+            btn.connect("clicked", make_cb(pct, k_target))
             preset_box.pack_start(btn, True, True, 0)
 
         nl_card.add_row(create_setting_row(
