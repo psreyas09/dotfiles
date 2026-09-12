@@ -1,4 +1,13 @@
- input {
+environment {
+    ELECTRON_OZONE_PLATFORM_HINT "auto"
+    QT_QPA_PLATFORM "wayland;xcb"
+    QT_WAYLAND_DISABLE_WINDOWDECORATION "1"
+    GDK_BACKEND "wayland,x11,*"
+    SDL_VIDEODRIVER "wayland,x11"
+    CLUTTER_BACKEND "wayland"
+}
+
+input {
     keyboard { xkb {}; numlock; }
     touchpad {
         tap
@@ -27,9 +36,9 @@ animations {
 
 blur {
     passes 3
-    offset 3.0
+    offset 2.5
     noise 0.02
-    saturation 1.4
+    saturation 1.30
 }
 
 overview {
@@ -145,6 +154,7 @@ window-rule {
     match app-id="org.gnome.Settings"
     match app-id="gnome-control-center"
     match app-id="dock-pin-manager"
+    match app-id="wl-mirror"
     match title="Pin Applications to Dock"
     open-floating true
     opacity 0.95
@@ -419,17 +429,15 @@ binds {
     XF86KbdBrightnessUp  allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-up"; }
     XF86KbdBrightnessDown allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-down"; }
     XF86KbdLightOnOff    allow-when-locked=true { spawn "bash" "-c" "/home/sreyas/.config/niri/osd.sh kbd-toggle"; }
+
+    // --- Screen Mirroring & Projector Mode ---
+    Mod+P                allow-when-locked=false { spawn "bash" "/home/sreyas/.config/niri/mirror.sh" "toggle"; }
+    XF86Display          allow-when-locked=false { spawn "bash" "/home/sreyas/.config/niri/mirror.sh" "toggle"; }
 }
 
 include "current-theme.kdl"
 
 output "eDP-1" {
-    mode "1920x1080@120.213"
-
     scale 1.0
-
-
-
-
-
+    mode "1920x1080@120.213"
 }

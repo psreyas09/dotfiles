@@ -190,46 +190,123 @@ def sync_kdl_to_dotfile(content):
         except Exception:
             pass
 
-def update_niri_output(output_name="eDP-1", mode=None, scale=None, vrr=None):
+MIRROR_SCRIPT = "/home/sreyas/.config/niri/mirror.sh"
+
+def is_mirror_running():
+    try:
+        res = subprocess.run(["pgrep", "-x", "wl-mirror"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+def get_niri_outputs_info():
+    try:
+        res = subprocess.run(["niri", "msg", "-j", "outputs"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+        if res.returncode == 0 and res.stdout.strip():
+            return json.loads(res.stdout)
+    except Exception as e:
+        print(f"Error reading niri outputs: {e}")
+    return {}
+
+def get_aspect_ratio_str(w, h):
+    if not w or not h:
+        return "16:9"
+    g = math.gcd(w, h)
+    rw, rh = w // g, h // g
+    if (rw, rh) == (8, 5): return "16:10"
+    if (rw, rh) == (16, 9): return "16:9"
+    if (rw, rh) == (4, 3): return "4:3"
+    if (rw, rh) == (5, 4): return "5:4"
+    if (rw, rh) == (21, 9) or (w, h) in [(2560, 1080), (3440, 1440)]: return "21:9"
+    if (rw, rh) == (32, 9) or (w, h) in [(5120, 1440), (3840, 1080)]: return "32:9"
+    if (rw, rh) == (3, 2): return "3:2"
+    return f"{rw}:{rh}"
+
+def update_niri_output(output_name="eDP-1", mode=None, scale=None, vrr=None, transform=None, position=None, custom_60hz=False):
+    # 1. Live dynamic update via niri msg output
+    try:
+        if mode is not None:
+            if custom_60hz or (isinstance(mode, str) and ("@60" in mode or "59.96" in mode)):
+                subprocess.run(["niri", "msg", "output", output_name, "custom-mode", "1920x1080@60.000"], capture_output=True)
+            else:
+                subprocess.run(["niri", "msg", "output", output_name, "mode", str(mode)], capture_output=True)
+        if scale is not None:
+            subprocess.run(["niri", "msg", "output", output_name, "scale", str(scale)], capture_output=True)
+        if transform is not None:
+            subprocess.run(["niri", "msg", "output", output_name, "transform", str(transform)], capture_output=True)
+        if position is not None:
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                subprocess.run(["niri", "msg", "output", output_name, "position", str(position[0]), str(position[1])], capture_output=True)
+        if vrr is not None:
+            subprocess.run(["niri", "msg", "output", output_name, "vrr", "on" if vrr else "off"], capture_output=True)
+    except Exception as e:
+        print(f"Live niri output error: {e}")
+
+    # 2. Persist to config.kdl
     try:
         with open(CONFIG_KDL_PATH, "r") as f:
             content = f.read()
 
-        pat = rf'output\s+\"{output_name}\"\s*\{{([^}}]*)\}}'
+        pat = rf'output\s+\"{re.escape(output_name)}\"\s*\{{([^}}]*)\}}'
         match = re.search(pat, content)
         if match:
             body = match.group(1)
-            if mode:
-                if re.search(r'mode\s+\"[^\"]+\"', body):
-                    body = re.sub(r'mode\s+\"[^\"]+\"', f'mode \"{mode}\"', body)
+            lines = [l.strip() for l in body.splitlines() if l.strip()]
+
+            # Always remove any off lines so display is never disabled
+            lines = [l for l in lines if l != "off"]
+
+            if mode is not None:
+                lines = [l for l in lines if not l.startswith("mode ") and not l.startswith("modeline ")]
+                if custom_60hz or (isinstance(mode, str) and ("@60" in mode or "59.96" in mode)):
+                    lines.append('modeline 173.00 1920 2048 2248 2576 1080 1083 1088 1120 "-hsync" "+vsync"')
                 else:
-                    body += f'\n    mode \"{mode}\"'
+                    lines.append(f'mode "{mode}"')
             if scale is not None:
-                if re.search(r'scale\s+[\d.]+', body):
-                    body = re.sub(r'scale\s+[\d.]+', f'scale {scale}', body)
-                else:
-                    body += f'\n    scale {scale}'
+                lines = [l for l in lines if not l.startswith("scale ")]
+                lines.append(f'scale {scale}')
+            if transform is not None:
+                lines = [l for l in lines if not l.startswith("transform ")]
+                if transform != "normal":
+                    lines.append(f'transform "{transform}"')
+            if position is not None:
+                lines = [l for l in lines if not l.startswith("position ")]
+                if isinstance(position, (list, tuple)) and len(position) >= 2:
+                    lines.append(f'position x={position[0]} y={position[1]}')
             if vrr is not None:
+                lines = [l for l in lines if not l.startswith("variable-refresh-rate")]
                 if vrr:
-                    if 'variable-refresh-rate' not in body:
-                        body += '\n    variable-refresh-rate'
-                else:
-                    body = re.sub(r'\s*variable-refresh-rate(\s+on|\s+off)?', '', body)
-            new_content = re.sub(pat, f'output \"{output_name}\" {{{body}\n}}', content)
+                    lines.append('variable-refresh-rate')
+
+            new_body = "\n" + "\n".join(f"    {l}" for l in lines) + "\n"
+            new_content = re.sub(pat, f'output "{output_name}" {{{new_body}}}', content)
         else:
-            new_block = f'\noutput \"{output_name}\" {{\n'
-            if mode: new_block += f'    mode \"{mode}\"\n'
-            if scale: new_block += f'    scale {scale}\n'
-            if vrr: new_block += '    variable-refresh-rate\n'
-            new_block += '}\n'
+            new_lines = []
+            if mode is not None:
+                if custom_60hz or (isinstance(mode, str) and ("@60" in mode or "59.96" in mode)):
+                    new_lines.append('modeline 173.00 1920 2048 2248 2576 1080 1083 1088 1120 "-hsync" "+vsync"')
+                else:
+                    new_lines.append(f'mode "{mode}"')
+            if scale is not None:
+                new_lines.append(f'scale {scale}')
+            if transform is not None and transform != "normal":
+                new_lines.append(f'transform "{transform}"')
+            if position is not None and isinstance(position, (list, tuple)) and len(position) >= 2:
+                new_lines.append(f'position x={position[0]} y={position[1]}')
+            if vrr:
+                new_lines.append('variable-refresh-rate')
+
+            new_body = "\n" + "\n".join(f"    {l}" for l in new_lines) + "\n"
+            new_block = f'\noutput "{output_name}" {{{new_body}}}\n'
             new_content = content + new_block
 
         with open(CONFIG_KDL_PATH, "w") as f:
             f.write(new_content)
         sync_kdl_to_dotfile(new_content)
-        subprocess.run(["niri", "msg", "action", "load-config-file"])
+        subprocess.run(["niri", "msg", "action", "load-config-file"], capture_output=True)
     except Exception as e:
-        print(f"Error updating niri output: {e}")
+        print(f"Error updating niri output in config: {e}")
+
 
 def update_niri_input(tap=None, natural_touchpad=None, dwt=None, accel_touchpad=None, scroll_factor=None, ffm=None):
     try:
@@ -301,6 +378,72 @@ def update_niri_layout(gaps=None, border_width=None):
         subprocess.run(["niri", "msg", "action", "load-config-file"])
     except Exception as e:
         print(f"Error updating layout: {e}")
+
+def get_niri_blur_state():
+    state = {
+        "enabled": True,
+        "passes": 3,
+        "offset": 3.0,
+        "noise": 0.02,
+        "saturation": 1.4
+    }
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            content = f.read()
+        m = re.search(r'blur\s*\{([^}]*)\}', content)
+        if m:
+            body = m.group(1)
+            if re.search(r'^\s*off\b', body, re.MULTILINE):
+                state["enabled"] = False
+            else:
+                state["enabled"] = True
+                p = re.search(r'passes\s+(\d+)', body)
+                if p: state["passes"] = int(p.group(1))
+                o = re.search(r'offset\s+([\d.]+)', body)
+                if o: state["offset"] = float(o.group(1))
+                n = re.search(r'noise\s+([\d.]+)', body)
+                if n: state["noise"] = float(n.group(1))
+                s = re.search(r'saturation\s+([\d.]+)', body)
+                if s: state["saturation"] = float(s.group(1))
+        else:
+            state["enabled"] = False
+    except Exception:
+        pass
+    return state
+
+def update_niri_blur(enabled=None, passes=None, offset=None, noise=None, saturation=None):
+    try:
+        with open(CONFIG_KDL_PATH, "r") as f:
+            content = f.read()
+
+        current = get_niri_blur_state()
+        new_enabled = current["enabled"] if enabled is None else bool(enabled)
+        new_passes = current["passes"] if passes is None else int(passes)
+        new_offset = current["offset"] if offset is None else float(offset)
+        new_noise = current["noise"] if noise is None else float(noise)
+        new_saturation = current["saturation"] if saturation is None else float(saturation)
+
+        if not new_enabled or new_passes == 0:
+            new_block = "blur {\n    off\n}"
+        else:
+            new_block = f"""blur {{
+    passes {new_passes}
+    offset {new_offset:.1f}
+    noise {new_noise:.2f}
+    saturation {new_saturation:.2f}
+}}"""
+
+        if re.search(r'blur\s*\{[^}]*\}', content):
+            content = re.sub(r'blur\s*\{[^}]*\}', new_block, content)
+        else:
+            content = content + "\n\n" + new_block + "\n"
+
+        with open(CONFIG_KDL_PATH, "w") as f:
+            f.write(content)
+        sync_kdl_to_dotfile(content)
+        subprocess.run(["niri", "msg", "action", "load-config-file"], capture_output=True)
+    except Exception as e:
+        print(f"Error updating blur: {e}")
 
 def get_niri_input_state():
     state = {
@@ -1103,6 +1246,7 @@ class NiriSettingsApp(Gtk.Window):
             "about": self.page_about,
         }
 
+        self.current_display_tab = None
         self.build_sidebar()
         self.load_page("display")
         first_row = self.sidebar_list.get_row_at_index(0)
@@ -1176,6 +1320,13 @@ class NiriSettingsApp(Gtk.Window):
                 self.stack.add_named(widget, page_id)
                 widget.show_all()
                 self.pages_built[page_id] = widget
+
+    def reload_display_page(self):
+        if "display" in self.pages_built:
+            w = self.pages_built.pop("display")
+            self.stack.remove(w)
+        self.load_page("display")
+        self.stack.set_visible_child_name("display")
 
     def switch_to_page(self, page_id):
         self.load_page(page_id)
@@ -1365,87 +1516,512 @@ class NiriSettingsApp(Gtk.Window):
     # PAGE 1: DISPLAY & MONITOR
     # ==========================================
     def page_display(self):
-        scroll, vbox = self.make_page_container("Display & Monitor", "Panel resolution, refresh rate, desktop scale, and adaptive sync")
+        scroll, vbox = self.make_page_container("Display & Monitor", "Panel resolution, refresh rate, screen mirroring for projectors, and multi-display layout")
 
+        outputs_info = get_niri_outputs_info()
+        if not outputs_info:
+            outputs_info = {
+                "eDP-1": {
+                    "name": "eDP-1",
+                    "make": "AU Optronics",
+                    "model": "0xD1ED",
+                    "physical_size": [340, 190],
+                    "modes": [{"width": 1920, "height": 1080, "refresh_rate": 120213, "is_preferred": True}],
+                    "current_mode": 0,
+                    "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080, "scale": 1.0, "transform": "Normal"}
+                }
+            }
+
+        display_names = list(outputs_info.keys())
+        if not hasattr(self, "current_display_tab") or self.current_display_tab not in display_names:
+            self.current_display_tab = "eDP-1" if "eDP-1" in display_names else display_names[0]
+
+        active_disp = self.current_display_tab
+        disp_data = outputs_info.get(active_disp, {})
+
+        # -------------------------------------------------------------
+        # 1. DISPLAY SELECTOR / TOP BAR
+        # -------------------------------------------------------------
+        selector_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        selector_box.set_margin_bottom(6)
+
+        tab_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        for d_name in display_names:
+            d_info = outputs_info[d_name]
+            d_make = d_info.get("make", "") or "Display"
+            is_primary = (d_name == "eDP-1")
+            
+            btn_label = f"{d_name}"
+            if d_make and d_make != "Unknown":
+                btn_label += f" ({d_make})"
+            if is_primary:
+                btn_label += " ★ Primary"
+
+            btn = Gtk.Button(label=btn_label)
+            btn.set_name("display-pill-btn")
+            if d_name == active_disp:
+                btn.get_style_context().add_class("suggested-action")
+            
+            def make_tab_cb(target_name):
+                def _cb(_):
+                    self.current_display_tab = target_name
+                    self.reload_display_page()
+                return _cb
+            btn.connect("clicked", make_tab_cb(d_name))
+            tab_box.pack_start(btn, False, False, 0)
+
+        selector_box.pack_start(tab_box, True, True, 0)
+
+        # Rescan Displays Button
+        rescan_btn = Gtk.Button(label="Rescan 🔄")
+        rescan_btn.set_tooltip_text("Detect newly connected monitors, projectors, or HDMI cables")
+        rescan_btn.connect("clicked", lambda _: self.reload_display_page())
+        selector_box.pack_end(rescan_btn, False, False, 0)
+
+        # Identify Displays Button
+        def on_identify_clicked(_):
+            for name, info in outputs_info.items():
+                m_str = "Active"
+                if info.get("logical"):
+                    l = info["logical"]
+                    m_str = f"{l.get('width', '')}x{l.get('height', '')} @ {l.get('scale', 1.0)}x"
+                subprocess.Popen([
+                    "notify-send", "-u", "normal", "-i", "video-display", "-t", "4000",
+                    f"Display: {name}", f"Model: {info.get('make', '')} {info.get('model', '')}\nMode: {m_str}"
+                ])
+        identify_btn = Gtk.Button(label="Identify")
+        identify_btn.set_tooltip_text("Flash display identifiers on all connected monitors")
+        identify_btn.connect("clicked", on_identify_clicked)
+        selector_box.pack_end(identify_btn, False, False, 4)
+
+        vbox.pack_start(selector_box, False, False, 0)
+
+        # -------------------------------------------------------------
+        # 2. DISPLAY HARDWARE & STATUS CARD
+        # -------------------------------------------------------------
         info_card = SettingsCard()
         vbox.pack_start(info_card, False, False, 0)
 
-        output_data = {}
-        try:
-            res = subprocess.run(["niri", "msg", "-j", "outputs"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
-            if res.returncode == 0:
-                data = json.loads(res.stdout)
-                output_data = data.get("eDP-1", {})
-        except Exception:
-            pass
+        phys = disp_data.get("physical_size") or [340, 190]
+        if phys and len(phys) >= 2 and phys[0] and phys[1]:
+            diag = round(((phys[0]**2 + phys[1]**2)**0.5) / 25.4, 1)
+            size_str = f"{diag}\""
+        else:
+            size_str = "External"
 
-        phys = output_data.get("physical_size", [340, 190])
-        diag = round(((phys[0]**2 + phys[1]**2)**0.5) / 25.4, 1)
+        logical = disp_data.get("logical")
+        is_display_on = logical is not None
+        if logical:
+            log_desc = f"Active • {logical.get('width')}x{logical.get('height')} @ {logical.get('scale', 1.0)}x • Pos: ({logical.get('x', 0)}, {logical.get('y', 0)})"
+        else:
+            log_desc = "Connected"
 
+        make_model = f"{disp_data.get('make', 'Generic')} {disp_data.get('model', '')}".strip()
         info_card.add_row(create_setting_row(
             "video-display",
-            "Internal Display Panel",
-            f"AU Optronics • {diag}\" 16:9 • eDP-1 (Primary Display)",
-            Gtk.Label(label="1920x1080 Native")
+            f"{make_model} ({active_disp})",
+            f"{size_str} Panel • {log_desc}",
+            Gtk.Label(label="Primary" if active_disp == "eDP-1" else "Secondary")
         ))
 
+        # GPU Status info
         gpu_info = get_gpu_status_info()
         gpu_btn = Gtk.Button(label="Manage in Power Settings →")
         gpu_btn.connect("clicked", lambda *_: self.switch_to_page("power"))
-
         info_card.add_row(create_setting_row(
             "applications-games",
-            "Graphics Processors",
+            "Graphics Processors (GPU)",
             f"Mode: {gpu_info['mode'].title()} • {gpu_info['igpu']} + {gpu_info['dgpu']} ({gpu_info['dgpu_status']})",
             gpu_btn
         ))
 
+        # -------------------------------------------------------------
+        # 3. DISPLAY RESOLUTION & MODE SETTINGS CARD
+        # -------------------------------------------------------------
         mode_card = SettingsCard()
         vbox.pack_start(mode_card, False, False, 0)
 
-        modes = output_data.get("modes", [])
-        rates = sorted(list(set(round(m.get("refresh_rate", 120213) / 1000, 2) for m in modes)), reverse=True)
-        if not rates:
-            rates = [120.21]
+        modes = disp_data.get("modes", [])
+        res_dict = {}
+        for m in modes:
+            key = (m.get("width", 1920), m.get("height", 1080))
+            res_dict.setdefault(key, []).append(m)
 
+        # Inject 60 Hz Battery Saver option if a display only reports >= 100 Hz modes in hardware EDID
+        for key in list(res_dict.keys()):
+            rates = [m.get("refresh_rate", 0) for m in res_dict[key]]
+            if any(r >= 100000 for r in rates) and not any(55000 <= r <= 65000 for r in rates):
+                res_dict[key].append({
+                    "width": key[0],
+                    "height": key[1],
+                    "refresh_rate": 60000,
+                    "is_preferred": False,
+                    "is_custom": True
+                })
+
+        sorted_res = sorted(list(res_dict.keys()), key=lambda k: k[0] * k[1], reverse=True)
+        if not sorted_res:
+            sorted_res = [(1920, 1080)]
+            res_dict[(1920, 1080)] = [{"width": 1920, "height": 1080, "refresh_rate": 120213, "is_preferred": True}]
+
+        cur_mode_idx = disp_data.get("current_mode")
+        if cur_mode_idx is not None and 0 <= cur_mode_idx < len(modes):
+            cur_m = modes[cur_mode_idx]
+            cur_w, cur_h = cur_m.get("width", 1920), cur_m.get("height", 1080)
+            cur_rate_mhz = cur_m.get("refresh_rate", 120213)
+        else:
+            cur_w, cur_h = sorted_res[0]
+            cur_rate_mhz = res_dict[(cur_w, cur_h)][0].get("refresh_rate", 120213)
+
+        # If output is configured with custom modeline in config.kdl, reflect 60 Hz active
+        try:
+            with open(CONFIG_KDL_PATH, "r") as _f:
+                _cfg_text = _f.read()
+            _pat = rf'output\s+\"{re.escape(active_disp)}\"\s*\{{([^}}]*)\}}'
+            _m = re.search(_pat, _cfg_text)
+            if _m and "modeline" in _m.group(1):
+                cur_rate_mhz = 60000
+        except Exception:
+            pass
+
+        cur_res_id = f"{cur_w}x{cur_h}"
+        updating_mode = [False]
+
+        # Resolution Dropdown
+        res_combo = Gtk.ComboBoxText()
+        for (w, h) in sorted_res:
+            aspect = get_aspect_ratio_str(w, h)
+            is_pref = any(m.get("is_preferred", False) for m in res_dict[(w, h)])
+            label = f"{w}x{h} ({aspect})" + (" — Native" if is_pref else "")
+            res_combo.append(f"{w}x{h}", label)
+        res_combo.set_active_id(cur_res_id if cur_res_id in [f"{w}x{h}" for w, h in sorted_res] else f"{sorted_res[0][0]}x{sorted_res[0][1]}")
+
+        # Refresh Rate Dropdown
         rate_combo = Gtk.ComboBoxText()
-        for r in rates:
-            rate_combo.append(str(r), f"{r} Hz (Native Timing)")
-        rate_combo.set_active_id(str(rates[0]))
-        rate_combo.connect("changed", lambda c: update_niri_output("eDP-1", mode=f"1920x1080@{c.get_active_id()}"))
+        def populate_rate_combo(res_str, select_mhz=None):
+            rate_combo.remove_all()
+            try:
+                w_str, h_str = res_str.split("x")
+                w, h = int(w_str), int(h_str)
+                m_list = res_dict.get((w, h), [])
+                m_list_sorted = sorted(m_list, key=lambda m: m.get("refresh_rate", 0), reverse=True)
+                for m in m_list_sorted:
+                    mhz = m.get("refresh_rate", 60000)
+                    hz_num = round(mhz / 1000.0, 2)
+                    if m.get("is_preferred"):
+                        hz_label = f"{hz_num} Hz (Native - Smooth)"
+                    elif 58.0 <= hz_num <= 62.0:
+                        hz_label = f"{hz_num} Hz (Battery Saver)"
+                    else:
+                        hz_label = f"{hz_num} Hz"
+                    rate_combo.append(str(mhz), hz_label)
+
+                if select_mhz is not None:
+                    sel_int = int(select_mhz)
+                    matched_id = None
+                    for m in m_list_sorted:
+                        if abs(m.get("refresh_rate", 0) - sel_int) < 2500:
+                            matched_id = str(m.get("refresh_rate"))
+                            break
+                    if matched_id:
+                        rate_combo.set_active_id(matched_id)
+                    elif m_list_sorted:
+                        rate_combo.set_active_id(str(m_list_sorted[0].get("refresh_rate")))
+                elif m_list_sorted:
+                    rate_combo.set_active_id(str(m_list_sorted[0].get("refresh_rate")))
+            except Exception as e:
+                print(f"Error populating rate combo: {e}")
+
+        populate_rate_combo(cur_res_id, cur_rate_mhz)
+
+        def apply_selected_mode():
+            if updating_mode[0]:
+                return
+            res_id = res_combo.get_active_id()
+            rate_id = rate_combo.get_active_id()
+            if not res_id:
+                return
+            is_custom = False
+            if rate_id:
+                try:
+                    mhz_val = int(rate_id)
+                    hz_float = mhz_val / 1000.0
+                    mode_str = f"{res_id}@{hz_float:.3f}"
+                    if 58000 <= mhz_val <= 62000 and res_id == "1920x1080":
+                        orig_rates = [m.get("refresh_rate", 0) for m in disp_data.get("modes", []) if (m.get("width"), m.get("height")) == (1920, 1080) and not m.get("is_custom", False)]
+                        if not any(58000 <= r <= 62000 for r in orig_rates):
+                            is_custom = True
+                except ValueError:
+                    mode_str = res_id
+            else:
+                mode_str = res_id
+            update_niri_output(active_disp, mode=mode_str, custom_60hz=is_custom)
+
+        def on_res_changed(combo):
+            if updating_mode[0]:
+                return
+            res_id = combo.get_active_id()
+            if not res_id:
+                return
+            updating_mode[0] = True
+            populate_rate_combo(res_id)
+            updating_mode[0] = False
+            apply_selected_mode()
+
+        def on_rate_changed(combo):
+            if updating_mode[0]:
+                return
+            apply_selected_mode()
+
+        res_combo.connect("changed", on_res_changed)
+        rate_combo.connect("changed", on_rate_changed)
 
         mode_card.add_row(create_setting_row(
             "preferences-desktop-display",
+            "Screen Resolution",
+            "Change display resolution. Native aspect ratio offers crisp text and ideal geometry.",
+            res_combo
+        ))
+
+        mode_card.add_row(create_setting_row(
+            "video-display",
             "Display Refresh Rate",
-            f"Hardware panel timing is locked to {rates[0]} Hz. Use VRR below for dynamic 60-120Hz power saving.",
+            "Vertical refresh frequency. Higher rates deliver ultra-smooth window scrolling.",
             rate_combo
         ))
 
-        cur_scale = str(output_data.get("logical", {}).get("scale", 1.0))
+        # Desktop Scaling Dropdown
+        cur_scale = str(disp_data.get("logical", {}).get("scale", 1.0)) if disp_data.get("logical") else "1.0"
         scale_combo = Gtk.ComboBoxText()
         scale_combo.append("1.0", "100% (Native 1.0x)")
         scale_combo.append("1.25", "125% (Comfortable 1.25x)")
         scale_combo.append("1.5", "150% (High DPI 1.5x)")
-        scale_combo.set_active_id(cur_scale if cur_scale in ["1.0", "1.25", "1.5"] else "1.0")
-        scale_combo.connect("changed", lambda c: update_niri_output("eDP-1", scale=c.get_active_id()))
+        scale_combo.append("1.75", "175% (1.75x)")
+        scale_combo.append("2.0", "200% (Retina 2.0x)")
+        scale_combo.set_active_id(cur_scale if cur_scale in ["1.0", "1.25", "1.5", "1.75", "2.0"] else "1.0")
+        scale_combo.connect("changed", lambda c: update_niri_output(active_disp, scale=c.get_active_id()))
 
         mode_card.add_row(create_setting_row(
             "zoom-fit-best",
             "Desktop Scaling",
-            "Scale UI elements proportionally for high resolution visibility",
+            "Scale UI elements proportionally for high resolution visibility and comfort",
             scale_combo
         ))
 
+        # Display Orientation / Rotation Dropdown
+        cur_trans = str(disp_data.get("logical", {}).get("transform", "Normal")).lower() if disp_data.get("logical") else "normal"
+        trans_combo = Gtk.ComboBoxText()
+        trans_combo.append("normal", "Standard (Landscape - 0°)")
+        trans_combo.append("90", "Rotated 90° (Portrait - Clockwise)")
+        trans_combo.append("180", "Inverted 180° (Upside Down)")
+        trans_combo.append("270", "Rotated 270° (Portrait - Counter-Clockwise)")
+        trans_combo.set_active_id(cur_trans if cur_trans in ["normal", "90", "180", "270"] else "normal")
+        trans_combo.connect("changed", lambda c: update_niri_output(active_disp, transform=c.get_active_id()))
+
+        mode_card.add_row(create_setting_row(
+            "object-rotate-right",
+            "Display Orientation",
+            "Rotate screen orientation for vertical monitor stands or presentations",
+            trans_combo
+        ))
+
+        # Display Arrangement / Position (when multiple monitors exist)
+        if len(display_names) > 1 and active_disp != "eDP-1":
+            pos_combo = Gtk.ComboBoxText()
+            pos_combo.append("auto", "Auto (Niri Managed Placement)")
+            pos_combo.append("right", "Right of Primary (eDP-1)")
+            pos_combo.append("left", "Left of Primary (eDP-1)")
+            pos_combo.append("above", "Above Primary (eDP-1)")
+            pos_combo.append("below", "Below Primary (eDP-1)")
+
+            cur_pos = disp_data.get("logical")
+            if cur_pos:
+                cx, cy = cur_pos.get("x", 0), cur_pos.get("y", 0)
+                if cx > 0 and cy == 0:
+                    pos_combo.set_active_id("right")
+                elif cx < 0 and cy == 0:
+                    pos_combo.set_active_id("left")
+                elif cy < 0 and cx == 0:
+                    pos_combo.set_active_id("above")
+                elif cy > 0 and cx == 0:
+                    pos_combo.set_active_id("below")
+                else:
+                    pos_combo.set_active_id("auto")
+            else:
+                pos_combo.set_active_id("auto")
+
+            def on_pos_changed(c):
+                pid = c.get_active_id()
+                pri_log = outputs_info.get("eDP-1", {}).get("logical", {"width": 1920, "height": 1080})
+                pri_w = pri_log.get("width", 1920)
+                pri_h = pri_log.get("height", 1080)
+                sec_log = disp_data.get("logical", {"width": 1920, "height": 1080})
+                sec_w = sec_log.get("width", 1920)
+                sec_h = sec_log.get("height", 1080)
+
+                if pid == "right":
+                    update_niri_output(active_disp, position=(pri_w, 0))
+                elif pid == "left":
+                    update_niri_output(active_disp, position=(-sec_w, 0))
+                elif pid == "above":
+                    update_niri_output(active_disp, position=(0, -sec_h))
+                elif pid == "below":
+                    update_niri_output(active_disp, position=(0, pri_h))
+                else:
+                    update_niri_output(active_disp, position="auto")
+
+            pos_combo.connect("changed", on_pos_changed)
+            mode_card.add_row(create_setting_row(
+                "video-display",
+                "Display Arrangement",
+                "Position this secondary monitor relative to primary laptop display",
+                pos_combo
+            ))
+
+        # VRR Switch
         vrr_switch = Gtk.Switch()
-        vrr_switch.set_active(output_data.get("vrr_enabled", False))
-        vrr_switch.connect("state-set", lambda _, state: (update_niri_output("eDP-1", vrr=state), False)[1])
+        vrr_switch.set_active(disp_data.get("vrr_enabled", False))
+        vrr_switch.set_sensitive(disp_data.get("vrr_supported", True))
+        vrr_switch.connect("state-set", lambda _, state: (update_niri_output(active_disp, vrr=state), False)[1])
 
         mode_card.add_row(create_setting_row(
             "applications-games",
             "Variable Refresh Rate (VRR / FreeSync)",
-            "Dynamically scales refresh rate between 60 Hz (idle) and 120 Hz (motion) to save battery",
+            "Dynamically scales refresh rate between 60 Hz and 120 Hz to eliminate tearing and save battery",
             vrr_switch
         ))
+
+        # -------------------------------------------------------------
+        # 4. PROJECTOR & SCREEN MIRRORING CARD
+        # -------------------------------------------------------------
+        mirror_card = SettingsCard()
+        vbox.pack_start(mirror_card, False, False, 0)
+
+        # Mirror Status & Master Toggle
+        mirror_active = is_mirror_running()
+        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        status_badge = Gtk.Label(label="● Mirroring Active" if mirror_active else "● Mirroring Inactive")
+        status_badge.set_name("badge-label-active" if mirror_active else "badge-label-muted")
+
+        mirror_btn = Gtk.Button(label="⏹ Stop Mirroring" if mirror_active else "▶ Start Projector Mirror")
+        if not mirror_active:
+            mirror_btn.get_style_context().add_class("suggested-action")
+        else:
+            mirror_btn.get_style_context().add_class("destructive-action")
+
+        status_box.pack_start(status_badge, False, False, 0)
+        status_box.pack_start(mirror_btn, False, False, 0)
+
+        mirror_card.add_row(create_setting_row(
+            "preferences-desktop-display",
+            "Projector & Screen Mirroring",
+            "Duplicate your screen to an external projector or monitor for presentations and slideshows",
+            status_box
+        ))
+
+        # Source & Target Output Selectors
+        src_target_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        src_combo = Gtk.ComboBoxText()
+        for n in display_names:
+            src_combo.append(n, f"Source: {n}" + (" (Laptop)" if n == "eDP-1" else ""))
+        src_combo.set_active_id("eDP-1" if "eDP-1" in display_names else display_names[0])
+
+        arrow_lbl = Gtk.Label(label="→")
+        arrow_lbl.set_name("row-title")
+
+        target_combo = Gtk.ComboBoxText()
+        other_outputs = [n for n in display_names if n != src_combo.get_active_id()]
+        for n in other_outputs:
+            target_combo.append(n, f"Projector: {n}")
+        target_combo.append("window", "Preview (Floating Window)")
+        if other_outputs:
+            target_combo.set_active_id(other_outputs[0])
+        else:
+            target_combo.set_active_id("window")
+
+        src_target_box.pack_start(src_combo, False, False, 0)
+        src_target_box.pack_start(arrow_lbl, False, False, 0)
+        src_target_box.pack_start(target_combo, False, False, 0)
+
+        mirror_card.add_row(create_setting_row(
+            "video-display",
+            "Mirror Source & Target",
+            "Select display to broadcast and the connected projector or external screen",
+            src_target_box
+        ))
+
+        # Scaling Mode Dropdown
+        scaling_combo = Gtk.ComboBoxText()
+        scaling_combo.append("fit", "Fit Screen (Preserve Aspect Ratio - Best for Projectors)")
+        scaling_combo.append("cover", "Cover Screen (Fill completely, crop borders)")
+        scaling_combo.append("exact", "Exact (1:1 Multiples)")
+        scaling_combo.set_active_id("fit")
+
+        mirror_card.add_row(create_setting_row(
+            "zoom-fit-best",
+            "Projector Aspect Ratio & Scaling",
+            "Fit preserves original proportions on 4:3 and 16:9 projectors without image stretching",
+            scaling_combo
+        ))
+
+        # Show Mouse Cursor Switch
+        cursor_switch = Gtk.Switch()
+        cursor_switch.set_active(True)
+
+        mirror_card.add_row(create_setting_row(
+            "input-mouse",
+            "Show Cursor on Projector",
+            "Display the mouse pointer clearly on the mirrored presentation screen",
+            cursor_switch
+        ))
+
+        # Master Button Callback
+        def on_mirror_btn_clicked(_):
+            if is_mirror_running():
+                subprocess.run([MIRROR_SCRIPT, "stop"])
+            else:
+                src = src_combo.get_active_id() or "eDP-1"
+                tgt = target_combo.get_active_id() or ""
+                s_mode = scaling_combo.get_active_id() or "fit"
+                s_cur = "yes" if cursor_switch.get_active() else "no"
+                subprocess.Popen([MIRROR_SCRIPT, "start", src, tgt, s_mode, s_cur])
+            
+            GLib.timeout_add(350, update_mirror_ui_state)
+
+        mirror_btn.connect("clicked", on_mirror_btn_clicked)
+
+        def update_mirror_ui_state():
+            active = is_mirror_running()
+            if active:
+                status_badge.set_text("● Mirroring Active")
+                status_badge.set_name("badge-label-active")
+                mirror_btn.set_label("⏹ Stop Mirroring")
+                mirror_btn.get_style_context().remove_class("suggested-action")
+                mirror_btn.get_style_context().add_class("destructive-action")
+            else:
+                status_badge.set_text("● Mirroring Inactive")
+                status_badge.set_name("badge-label-muted")
+                mirror_btn.set_label("▶ Start Projector Mirror")
+                mirror_btn.get_style_context().remove_class("destructive-action")
+                mirror_btn.get_style_context().add_class("suggested-action")
+            return True
+
+        # Keep state updated via timeout while viewing this page
+        timer_id = GLib.timeout_add(1500, update_mirror_ui_state)
+        scroll.connect("destroy", lambda _: GLib.source_remove(timer_id))
+
+        # Shortcut Quick Tip Box
+        tip_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        tip_box.set_name("info-banner")
+        tip_icon = Gtk.Image.new_from_icon_name("dialog-information", Gtk.IconSize.DND)
+        tip_lbl = Gtk.Label(label="Quick Shortcut: Press Mod + P or your laptop's Display key (Fn + F7/F8) anytime to instantly toggle projector mirroring on and off.")
+        tip_lbl.set_line_wrap(True)
+        tip_lbl.set_xalign(0)
+        tip_box.pack_start(tip_icon, False, False, 0)
+        tip_box.pack_start(tip_lbl, True, True, 0)
+        vbox.pack_start(tip_box, False, False, 0)
 
         # -------------------------------------------------------------
         # NIGHT LIGHT / EYE COMFORT CARD
@@ -1779,6 +2355,110 @@ class NiriSettingsApp(Gtk.Window):
             "Active Window Border Width",
             "Glow outline thickness around currently focused window",
             border_scale
+        ))
+
+        # Frosted Glass & Background Blur Card
+        vbox.pack_start(Gtk.Label(label="FROSTED GLASS & BLUR EFFECTS", xalign=0, name="section-caption"), False, False, 0)
+        blur_card = SettingsCard()
+        vbox.pack_start(blur_card, False, False, 0)
+
+        blur_state = get_niri_blur_state()
+
+        # 1. Master Blur Switch
+        blur_switch = Gtk.Switch()
+        blur_switch.set_active(blur_state["enabled"])
+
+        blur_card.add_row(create_setting_row(
+            "weather-fog",
+            "Dual-Kawase Background Blur",
+            "Hardware-accelerated frosted glass effect on translucent windows, terminals, and menus",
+            blur_switch
+        ))
+
+        # 2. Blur Quality (Passes)
+        passes_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 4, 1)
+        passes_scale.set_digits(0)
+        passes_scale.set_value(blur_state["passes"])
+        passes_scale.set_size_request(180, -1)
+        passes_scale.set_sensitive(blur_state["enabled"])
+
+        # 3. Blur Spread / Offset
+        offset_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1.0, 6.0, 0.5)
+        offset_scale.set_digits(1)
+        offset_scale.set_value(blur_state["offset"])
+        offset_scale.set_size_request(180, -1)
+        offset_scale.set_sensitive(blur_state["enabled"])
+
+        # 4. Color Saturation Boost
+        sat_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1.0, 1.8, 0.1)
+        sat_scale.set_digits(1)
+        sat_scale.set_value(blur_state["saturation"])
+        sat_scale.set_size_request(180, -1)
+        sat_scale.set_sensitive(blur_state["enabled"])
+
+        # 5. Film Grain / Noise
+        noise_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.0, 0.08, 0.01)
+        noise_scale.set_digits(2)
+        noise_scale.set_value(blur_state["noise"])
+        noise_scale.set_size_request(180, -1)
+        noise_scale.set_sensitive(blur_state["enabled"])
+
+        blur_timer = [None]
+        def schedule_blur_update():
+            if blur_timer[0]:
+                GLib.source_remove(blur_timer[0])
+            def _apply():
+                update_niri_blur(
+                    enabled=blur_switch.get_active(),
+                    passes=int(passes_scale.get_value()),
+                    offset=offset_scale.get_value(),
+                    saturation=sat_scale.get_value(),
+                    noise=noise_scale.get_value()
+                )
+                blur_timer[0] = None
+                return False
+            blur_timer[0] = GLib.timeout_add(120, _apply)
+
+        def on_blur_toggled(sw, state):
+            passes_scale.set_sensitive(state)
+            offset_scale.set_sensitive(state)
+            sat_scale.set_sensitive(state)
+            noise_scale.set_sensitive(state)
+            update_niri_blur(enabled=state)
+            return False
+
+        blur_switch.connect("state-set", on_blur_toggled)
+        passes_scale.connect("value-changed", lambda _: schedule_blur_update())
+        offset_scale.connect("value-changed", lambda _: schedule_blur_update())
+        sat_scale.connect("value-changed", lambda _: schedule_blur_update())
+        noise_scale.connect("value-changed", lambda _: schedule_blur_update())
+
+        blur_card.add_row(create_setting_row(
+            "applications-graphics",
+            "Blur Intensity (Shader Passes)",
+            "1 = Light / Fast, 2 = Balanced (Best Battery), 3 = Deep Glass, 4 = Ultra Smooth",
+            passes_scale
+        ))
+
+        blur_card.add_row(create_setting_row(
+            "zoom-fit-best",
+            "Blur Radius & Spread (Offset)",
+            "Diffusion distance. Higher values create a softer, more dispersed background",
+            offset_scale
+        ))
+
+        blur_card.add_row(create_setting_row(
+            "color-management",
+            "Vibrancy & Saturation",
+            "Color intensity of wallpaper hues shining through frosted glass windows",
+            sat_scale
+        ))
+
+        blur_card.add_row(create_setting_row(
+            "emblem-default",
+            "Micro-Noise & Grain",
+            "Fine-textured grain to prevent banding on dark gradients and shadows",
+            noise_scale
         ))
 
         return scroll
@@ -3436,6 +4116,34 @@ class NiriSettingsApp(Gtk.Window):
         button:hover {{
             background-color: alpha(@accent-color, 0.28);
             border-color: @accent-color;
+        }}
+
+        button.suggested-action {{
+            background-color: @accent-color;
+            color: @bg-color;
+            border-color: @accent-color;
+        }}
+
+        button.suggested-action:hover {{
+            background-color: alpha(@accent-color, 0.85);
+            border-color: @accent-color;
+        }}
+
+        button.destructive-action {{
+            background-color: rgba(231, 76, 60, 0.85);
+            color: #ffffff;
+            border-color: #e74c3c;
+        }}
+
+        button.destructive-action:hover {{
+            background-color: rgba(231, 76, 60, 1.0);
+            border-color: #e74c3c;
+        }}
+
+        #display-pill-btn {{
+            border-radius: 18px;
+            padding: 5px 12px;
+            font-size: 12px;
         }}
 
         combobox button.combo {{
