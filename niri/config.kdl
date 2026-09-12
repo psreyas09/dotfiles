@@ -292,7 +292,7 @@ layer-rule {
 
 spawn-at-startup "lxpolkit"
 
-spawn-at-startup "sh" "-c" "killall waybar; waybar"
+spawn-at-startup "waybar"
 spawn-at-startup "swaync"
 // spawn-at-startup "/home/sreyas/.config/niri/kbd-backlight-watcher"  // Managed by systemd user service: kbd-backlight-osd.service
 spawn-at-startup "/usr/bin/python3" "/home/sreyas/.config/waybar/scripts/power-menu.py" "--daemon"
