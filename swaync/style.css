@@ -54,6 +54,17 @@
   color: @accent-purple;
 }
 
+.widget-buttons-grid > flowbox > flowboxchild > button.active {
+  background: @accent-purple;
+  color: @bg-color;
+  border-color: @accent-purple;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button.active:hover {
+  background: alpha(@accent-purple, 0.85);
+  color: @bg-color;
+}
+
 .widget-dnd {
   background: rgba(40, 40, 40, 0.85);
   color: @fg-color;

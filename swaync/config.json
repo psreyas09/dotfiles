@@ -60,6 +60,13 @@
           "command": "pavucontrol"
         },
         {
+          "label": "󱈑 Conservation",
+          "type": "toggle",
+          "active": true,
+          "command": "bash /home/sreyas/.config/swaync/toggle-conservation.sh",
+          "update-command": "bash /home/sreyas/.config/swaync/toggle-conservation.sh status"
+        },
+        {
           "label": " Lock",
           "command": "swaylock"
         }
@@ -76,7 +83,10 @@
       "label": " "
     },
     "backlight": {
-      "label": " "
+      "label": " ",
+      "device": "amdgpu_bl1",
+      "subsystem": "backlight",
+      "min": 5
     }
   }
 }
