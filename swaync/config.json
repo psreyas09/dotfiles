@@ -52,10 +52,6 @@
           "command": "bash -c 'swaync-client -t -sw 2>/dev/null; bash /home/sreyas/.config/niri/wallpaper-picker.sh'"
         },
         {
-          "label": " Bluetooth",
-          "command": "blueman-manager"
-        },
-        {
           "label": " Audio",
           "command": "pavucontrol"
         },
