@@ -824,7 +824,6 @@ class MediaPopup(Gtk.Window):
         self.anim_start = None
         self.close_start = None
         self.is_closing = False
-        self.add_tick_callback(self.on_animate_in)
 
         # UI Build
         self.setup_ui()
@@ -883,16 +882,23 @@ class MediaPopup(Gtk.Window):
         # Update timer for seekbar & time (every 500ms)
         GLib.timeout_add(500, self.on_timer_tick)
 
-    # --- Entrance and Exit Animations ---
-    def on_animate_in(self, widget, frame_clock):
-        now = frame_clock.get_frame_time() / 1_000_000
-        if self.anim_start is None:
-            self.anim_start = now
-        elapsed = now - self.anim_start
-        progress = min(1.0, elapsed / 0.20)
+    # --- Entrance and Exit Animations (Timer-driven to guarantee execution on Wayland) ---
+    def start_animate_in(self):
+        self.is_closing = False
+        self.anim_start = time.time()
+        Gtk.Widget.set_opacity(self, 0.05)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
+        self.show_all()
+        GLib.timeout_add(16, self.step_animate_in)
+
+    def step_animate_in(self):
+        if self.is_closing:
+            return False
+        elapsed = time.time() - self.anim_start
+        progress = min(1.0, elapsed / 0.18)
         ease = 1.0 - (1.0 - progress) ** 3
 
-        Gtk.Widget.set_opacity(self, ease)
+        Gtk.Widget.set_opacity(self, max(0.05, ease))
         curr_margin = int(self.start_margin_top + (self.target_margin_top - self.start_margin_top) * ease)
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, curr_margin)
 
@@ -911,33 +917,27 @@ class MediaPopup(Gtk.Window):
 
     def show_animated(self, *_):
         """Re-show the popup with entrance animation and restart CAVA."""
-        self.is_closing = False
-        self.anim_start = None
-        Gtk.Widget.set_opacity(self, 0.0)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, self.start_margin_top)
         if hasattr(self, "cava") and self.cava and not self.cava.running:
             self.cava.proc = None
             self.cava.start()
             if hasattr(self, "cover_vis"):
                 self.cover_vis.set_audio_provider(self.cava)
         self.update_all()
-        self.show_all()
-        self.add_tick_callback(self.on_animate_in)
+        self.start_animate_in()
 
     def close_animated(self, *_):
         if self.is_closing:
             return
         self.is_closing = True
-        self.close_start = None
+        self.close_start = time.time()
         if hasattr(self, "cava") and self.cava:
             self.cava.stop()
-        self.add_tick_callback(self.on_animate_out)
+        GLib.timeout_add(16, self.step_animate_out)
 
-    def on_animate_out(self, widget, frame_clock):
-        now = frame_clock.get_frame_time() / 1_000_000
-        if self.close_start is None:
-            self.close_start = now
-        elapsed = now - self.close_start
+    def step_animate_out(self):
+        if not self.is_closing:
+            return False
+        elapsed = time.time() - self.close_start
         progress = min(1.0, elapsed / 0.15)
         ease = progress ** 2
 
@@ -1679,27 +1679,52 @@ class MediaPopup(Gtk.Window):
             self.load_placeholder_art()
             return
 
-        try:
-            if art_url.startswith("file://"):
+        if art_url.startswith("file://"):
+            try:
                 path = urllib.parse.unquote(art_url[7:])
                 pixbuf = self.get_square_pixbuf(path, 120)
                 self.cover_vis.set_art_pixbuf(pixbuf)
-            elif art_url.startswith("http://") or art_url.startswith("https://"):
-                import hashlib
-                cache_dir = "/tmp/waybar_art_cache"
-                os.makedirs(cache_dir, exist_ok=True)
-                cache_key = hashlib.md5(art_url.encode('utf-8')).hexdigest()
-                cached_file = os.path.join(cache_dir, f"{cache_key}.img")
-
-                if not os.path.exists(cached_file):
-                    urllib.request.urlretrieve(art_url, cached_file)
-
-                pixbuf = self.get_square_pixbuf(cached_file, 120)
-                self.cover_vis.set_art_pixbuf(pixbuf)
-            else:
+                return
+            except Exception:
                 self.load_placeholder_art()
-        except Exception:
+                return
+
+        if art_url.startswith("http://") or art_url.startswith("https://"):
+            import hashlib
+            cache_dir = "/tmp/waybar_art_cache"
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_key = hashlib.md5(art_url.encode('utf-8')).hexdigest()
+            cached_file = os.path.join(cache_dir, f"{cache_key}.img")
+
+            if os.path.exists(cached_file) and os.path.getsize(cached_file) > 0:
+                try:
+                    pixbuf = self.get_square_pixbuf(cached_file, 120)
+                    if pixbuf:
+                        self.cover_vis.set_art_pixbuf(pixbuf)
+                        return
+                except Exception:
+                    pass
+
+            # Display placeholder first so GUI thread NEVER blocks
             self.load_placeholder_art()
+
+            def fetch():
+                try:
+                    res = subprocess.run(
+                        ["curl", "-s", "-L", "--connect-timeout", "2", "--max-time", "4", art_url, "-o", cached_file],
+                        timeout=5
+                    )
+                    if res.returncode == 0 and os.path.exists(cached_file) and os.path.getsize(cached_file) > 0:
+                        pix = self.get_square_pixbuf(cached_file, 120)
+                        if pix:
+                            GLib.idle_add(lambda: self.cover_vis.set_art_pixbuf(pix))
+                except Exception:
+                    pass
+
+            threading.Thread(target=fetch, daemon=True).start()
+            return
+
+        self.load_placeholder_art()
 
     def load_placeholder_art(self):
         self.cover_vis.set_art_pixbuf(None)
@@ -2014,11 +2039,9 @@ class MediaPopup(Gtk.Window):
 
 def main():
     global app_instance
-    is_daemon = "--daemon" in sys.argv
-    if not is_daemon:
+    if "--daemon" not in sys.argv:
         toggle_or_exit()
 
-    # Write PID file (stays alive for the lifetime of the daemon)
     with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
 
@@ -2028,12 +2051,9 @@ def main():
     app = MediaPopup()
     app_instance = app
 
-    # SIGUSR1 = toggle show/hide (instant, no cold-start)
-    # Using GLibUnix.signal_add guarantees instant dispatch inside GTK main loop
     GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda *_: (app.toggle_window(), True)[1])
 
-    # If launched with --daemon, start hidden in background; otherwise show immediately on click
-    if is_daemon:
+    if "--daemon" in sys.argv:
         app.hide()
     else:
         app.show_animated()
