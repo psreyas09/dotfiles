@@ -763,26 +763,118 @@ def set_howdy_status(enable: bool, callback=None):
     threading.Thread(target=worker, daemon=True).start()
 
 
+def get_conservation_mode_path():
+    """Locate the Lenovo IdeaPad/Legion ACPI conservation_mode sysfs path."""
+    for pattern in [
+        "/sys/bus/platform/drivers/ideapad_acpi/*/conservation_mode",
+        "/sys/bus/platform/devices/VPC2004:*/conservation_mode",
+        "/sys/devices/platform/ideapad_acpi/conservation_mode",
+    ]:
+        matches = glob.glob(pattern)
+        if matches and os.path.exists(matches[0]):
+            return matches[0]
+    return None
+
+def get_conservation_mode_status():
+    """Returns True if Lenovo Battery Conservation Mode is currently active."""
+    p = get_conservation_mode_path()
+    if p and os.path.exists(p):
+        try:
+            with open(p, "r") as f:
+                return f.read().strip() == "1"
+        except Exception:
+            pass
+    return False
+
+def set_conservation_mode(enable, callback=None):
+    """Asynchronously toggles Lenovo Battery Conservation Mode."""
+    def worker():
+        val = "1" if enable else "0"
+        p = get_conservation_mode_path()
+        if not p:
+            if callback:
+                GLib.idle_add(callback, False, False)
+            return
+
+        success = False
+        # Tier 1: Direct write (if permissions allow)
+        try:
+            with open(p, "w") as f:
+                f.write(val)
+            success = True
+        except Exception:
+            pass
+
+        # Tier 2: Non-interactive sudo
+        if not success:
+            try:
+                res = subprocess.run(
+                    ["sudo", "-n", "sh", "-c", f"echo {val} > '{p}'"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3
+                )
+                if res.returncode == 0:
+                    success = True
+            except Exception:
+                pass
+
+        # Tier 3: PolicyKit graphical authentication (prompts via lxpolkit / polkit)
+        if not success:
+            try:
+                cmd = f"echo {val} > '{p}' && chmod 666 '{p}'"
+                res = subprocess.run(
+                    ["pkexec", "sh", "-c", cmd],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30
+                )
+                if res.returncode == 0:
+                    success = True
+            except Exception as e:
+                print(f"pkexec conservation mode failed: {e}")
+
+        final_state = get_conservation_mode_status()
+        if callback:
+            GLib.idle_add(callback, success, final_state)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 AUTOLOCK_CONF_PATH = os.path.expanduser("~/.config/niri/autolock.json")
 DOTFILE_AUTOLOCK_PATH = os.path.expanduser("~/dotfile/niri/autolock.json")
 
 def get_autolock_config():
+    cfg = {
+        "enabled": False,
+        "timeout": 300,
+        "lockscreen_action": "screen-off",
+        "lockscreen_timeout": 60
+    }
     if os.path.exists(AUTOLOCK_CONF_PATH):
         try:
             with open(AUTOLOCK_CONF_PATH, "r") as f:
-                return json.load(f)
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    cfg.update(loaded)
+                    return cfg
         except Exception:
             pass
     is_running = (subprocess.run(["pgrep", "-x", "swayidle"], stdout=subprocess.DEVNULL).returncode == 0)
-    return {"enabled": is_running, "timeout": 300}
+    cfg["enabled"] = is_running
+    return cfg
 
-def set_autolock_config(enabled, timeout=300):
-    data = {"enabled": bool(enabled), "timeout": int(timeout)}
+def set_autolock_config(enabled=None, timeout=None, lockscreen_action=None, lockscreen_timeout=None):
+    cur = get_autolock_config()
+    if enabled is not None:
+        cur["enabled"] = bool(enabled)
+    if timeout is not None:
+        cur["timeout"] = int(timeout)
+    if lockscreen_action is not None:
+        cur["lockscreen_action"] = str(lockscreen_action)
+    if lockscreen_timeout is not None:
+        cur["lockscreen_timeout"] = int(lockscreen_timeout)
     for p in [AUTOLOCK_CONF_PATH, DOTFILE_AUTOLOCK_PATH]:
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "w") as f:
-                json.dump(data, f, indent=2)
+                json.dump(cur, f, indent=2)
         except Exception:
             pass
 
@@ -3476,28 +3568,91 @@ class NiriSettingsApp(Gtk.Window):
             mode_box
         ))
 
-        # Battery Health Card
-        vbox.pack_start(Gtk.Label(label="BATTERY STATE", xalign=0, name="section-caption"), False, False, 0)
+        # Battery Health & Conservation Card
+        vbox.pack_start(Gtk.Label(label="BATTERY & POWER CONSERVATION", xalign=0, name="section-caption"), False, False, 0)
         bat_card = SettingsCard()
         vbox.pack_start(bat_card, False, False, 0)
 
         bat_info = run_cmd("upower -i /org/freedesktop/UPower/devices/battery_BAT0 | grep -E '(state|percentage)'")
-        perc = "56%"
-        state = "Plugged in (Conservation Mode)"
+        perc = "Unknown"
+        state = "Unknown"
         for line in bat_info.splitlines():
             if "percentage:" in line:
                 perc = line.split()[-1]
             if "state:" in line:
                 state = line.split()[-1].replace("-", " ").title()
 
-        bat_card.add_row(create_setting_row(
+        is_conserv = get_conservation_mode_status()
+        conserv_sub = " • Conservation Mode Active (~60-80% limit)" if is_conserv else " • Full Charge Mode (100% capacity)"
+
+        status_row = create_setting_row(
             "battery-good",
             f"Battery Charge: {perc}",
-            f"Status: {state} • Health Conservation Active",
+            f"Status: {state}{conserv_sub}",
             Gtk.Label(label=perc)
-        ))
+        )
+        bat_card.add_row(status_row)
 
-        # Auto-lock toggle
+        # Lenovo Battery Conservation Mode Toggle (Lenovo Vantage Integration)
+        has_lenovo_ec = get_conservation_mode_path() is not None
+        if has_lenovo_ec:
+            conserv_switch = Gtk.Switch()
+            conserv_switch.set_active(is_conserv)
+            conserv_updating = False
+
+            def on_conserv_toggled(sw, target_state):
+                nonlocal conserv_updating
+                if conserv_updating:
+                    return False
+                conserv_updating = True
+                sw.set_sensitive(False)
+
+                def on_done(ok, final_val):
+                    nonlocal conserv_updating
+                    sw.set_active(final_val)
+                    sw.set_state(final_val)
+                    sw.set_sensitive(True)
+                    conserv_updating = False
+                    if ok:
+                        title = "Lenovo Vantage Conservation Mode"
+                        desc = "Enabled: Charging limited to 60-80% to protect battery health" if final_val else "Disabled: Battery will charge to 100% full capacity"
+                        async_cmd(f'notify-send -a "Lenovo Vantage" -i "battery-good" "{title}" "{desc}"')
+                        try:
+                            children = status_row.get_children()
+                            text_box = children[1] if len(children) > 1 else children[0]
+                            tb_children = text_box.get_children()
+                            if len(tb_children) > 1:
+                                new_sub = " • Conservation Mode Active (~60-80% limit)" if final_val else " • Full Charge Mode (100% capacity)"
+                                tb_children[1].set_text(f"Status: {state}{new_sub}")
+                        except Exception:
+                            pass
+                    else:
+                        async_cmd('notify-send -a "Lenovo Vantage" -u critical "Conservation Mode" "Failed to update conservation mode. Authentication cancelled or failed."')
+
+                set_conservation_mode(target_state, on_done)
+                return True
+
+            conserv_switch.connect("state-set", on_conserv_toggled)
+
+            bat_card.add_row(create_setting_row(
+                "preferences-system-power",
+                "Lenovo Battery Conservation Mode",
+                "Limits charging to 60-80% while plugged in to extend battery lifespan (Lenovo Vantage)",
+                conserv_switch
+            ))
+
+            if os.path.exists("/usr/bin/vantage"):
+                vantage_btn = Gtk.Button(label="Open Vantage...")
+                vantage_btn.connect("clicked", lambda *_: async_cmd("/usr/bin/vantage"))
+                bat_card.add_row(create_setting_row(
+                    "applications-system",
+                    "Lenovo Vantage Control Panel",
+                    "Open the standalone Lenovo Vantage tool for fan modes, FN lock, and charging",
+                    vantage_btn
+                ))
+
+        # Auto-lock & Lockscreen Inactivity
+        vbox.pack_start(Gtk.Label(label="LOCK SCREEN & POWER MANAGEMENT", xalign=0, name="section-caption"), False, False, 0)
         lock_card = SettingsCard()
         vbox.pack_start(lock_card, False, False, 0)
 
@@ -3505,7 +3660,7 @@ class NiriSettingsApp(Gtk.Window):
         auto_lock_switch = Gtk.Switch()
         auto_lock_switch.set_active(autolock_cfg.get("enabled", True))
         def on_autolock_toggled(sw, state):
-            set_autolock_config(state)
+            set_autolock_config(enabled=state)
             target = "on" if state else "off"
             async_cmd(f"bash ~/.config/niri/toggle-autolock.sh {target}")
             return False
@@ -3514,9 +3669,32 @@ class NiriSettingsApp(Gtk.Window):
 
         lock_card.add_row(create_setting_row(
             "system-lock-screen",
-            "Automatic Screen Lock (Swaylock)",
-            "Automatically lock session with blurred screenshot after 5 minutes of inactivity",
+            "Automatic Screen Lock",
+            "Automatically lock session after 5 minutes of inactivity",
             auto_lock_switch
+        ))
+
+        # Lock Screen Timeout Action (Screen Off vs Sleep)
+        lock_action_combo = Gtk.ComboBoxText()
+        lock_action_combo.append("screen-off", "Turn Off Screen (Default)")
+        lock_action_combo.append("sleep", "Sleep / Suspend PC")
+        cur_action = autolock_cfg.get("lockscreen_action", "screen-off")
+        if cur_action not in ["screen-off", "sleep"]:
+            cur_action = "screen-off"
+        lock_action_combo.set_active_id(cur_action)
+
+        def on_lock_action_changed(c):
+            val = c.get_active_id()
+            if val:
+                set_autolock_config(lockscreen_action=val)
+
+        lock_action_combo.connect("changed", on_lock_action_changed)
+
+        lock_card.add_row(create_setting_row(
+            "system-suspend",
+            "Lock Screen Timeout Action",
+            "Action after lock screen timeout (60s): turn off screen illumination or put PC to sleep",
+            lock_action_combo
         ))
 
         # Howdy Face Recognition Quick Toggle

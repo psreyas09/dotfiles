@@ -10,10 +10,26 @@ DOTFILE_CONF="$HOME/dotfile/niri/autolock.json"
 save_state() {
     local enabled="$1"
     mkdir -p "$HOME/.config/niri"
+    local action="screen-off"
+    local lock_to=60
+    if [ -f "$CONF_FILE" ]; then
+        local read_action
+        read_action=$(grep -o '"lockscreen_action"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONF_FILE" | cut -d'"' -f4 || true)
+        if [ -n "$read_action" ]; then
+            action="$read_action"
+        fi
+        local read_lock_to
+        read_lock_to=$(grep -o '"lockscreen_timeout"[[:space:]]*:[[:space:]]*[0-9]\+' "$CONF_FILE" | grep -o '[0-9]\+' || true)
+        if [ -n "$read_lock_to" ]; then
+            lock_to="$read_lock_to"
+        fi
+    fi
     cat <<EOF > "$CONF_FILE"
 {
   "enabled": $enabled,
-  "timeout": $TIMEOUT
+  "timeout": $TIMEOUT,
+  "lockscreen_action": "$action",
+  "lockscreen_timeout": $lock_to
 }
 EOF
     if [ -d "$HOME/dotfile/niri" ]; then

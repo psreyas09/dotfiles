@@ -1,4 +1,6 @@
 {
   "enabled": false,
-  "timeout": 300
+  "timeout": 300,
+  "lockscreen_action": "screen-off",
+  "lockscreen_timeout": 60
 }

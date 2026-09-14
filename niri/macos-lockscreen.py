@@ -22,6 +22,7 @@ import hashlib
 import subprocess
 import urllib.parse
 import urllib.request
+import json
 import pwd
 import argparse
 import threading
@@ -34,7 +35,8 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 gi.require_version('GdkPixbuf', '2.0')
 gi.require_version('Gst', '1.0')
-from gi.repository import Gtk, Gdk, GtkSessionLock, GLib, GdkPixbuf, Pango, PangoCairo, Gst
+gi.require_version('Gio', '2.0')
+from gi.repository import Gtk, Gdk, GtkSessionLock, GLib, GdkPixbuf, Pango, PangoCairo, Gst, Gio
 import cairo
 import numpy as np
 import scipy.ndimage
@@ -42,9 +44,25 @@ import pam
 
 PID_FILE = "/tmp/macos_lockscreen.pid"
 ART_CACHE_DIR = "/tmp/swaylock_art_cache"
+AUTOLOCK_CONF = os.path.expanduser("~/.config/niri/autolock.json")
 AVATAR_PATH = os.path.expanduser("~/.face.icon")
 if not os.path.exists(AVATAR_PATH):
     AVATAR_PATH = os.path.expanduser("~/.face")
+
+def get_lockscreen_settings():
+    cfg = {"lockscreen_action": "screen-off", "lockscreen_timeout": 60}
+    try:
+        if os.path.exists(AUTOLOCK_CONF):
+            with open(AUTOLOCK_CONF, "r") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    if "lockscreen_action" in data:
+                        cfg["lockscreen_action"] = str(data["lockscreen_action"])
+                    if "lockscreen_timeout" in data and isinstance(data["lockscreen_timeout"], (int, float)):
+                        cfg["lockscreen_timeout"] = max(5, int(data["lockscreen_timeout"]))
+    except Exception:
+        pass
+    return cfg
 
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.webm', '.mkv', '.avi', '.gif')
 
@@ -1011,6 +1029,8 @@ class AnimState:
     EXIT = 3
 
 class MacOSLockWindow(Gtk.Window):
+    monitors_off = False
+
     def __init__(self, monitor, is_primary=True, on_unlock_cb=None, cli_wall=None):
         super().__init__()
         self.monitor = monitor
@@ -2040,23 +2060,42 @@ class MacOSLockWindow(Gtk.Window):
 
     def reset_inactivity(self):
         self.last_activity_time = time.time()
-        if self.monitors_off:
+        if MacOSLockWindow.monitors_off or self.monitors_off:
+            MacOSLockWindow.monitors_off = False
             self.monitors_off = False
             try:
                 subprocess.Popen(["niri", "msg", "action", "power-on-monitors"])
+            except Exception:
+                pass
+            try:
+                subprocess.Popen(["brightnessctl", "--device=*kbd*", "--restore"])
             except Exception:
                 pass
 
     def check_idle_sleep(self):
         if not self.is_primary or self.unlocked:
             return
-        # After 60 seconds of inactivity, put displays into DPMS sleep
-        if not self.monitors_off and (time.time() - self.last_activity_time > 60):
+        settings = get_lockscreen_settings()
+        timeout_sec = settings.get("lockscreen_timeout", 60)
+        action = settings.get("lockscreen_action", "screen-off")
+
+        # After inactivity timeout, put displays into DPMS sleep and turn off keyboard backlight
+        if not (MacOSLockWindow.monitors_off or self.monitors_off) and (time.time() - self.last_activity_time > timeout_sec):
+            MacOSLockWindow.monitors_off = True
             self.monitors_off = True
             try:
                 subprocess.Popen(["niri", "msg", "action", "power-off-monitors"])
             except Exception:
                 pass
+            try:
+                subprocess.Popen(["brightnessctl", "--device=*kbd*", "--save", "set", "0"])
+            except Exception:
+                pass
+            if action in ("sleep", "suspend"):
+                try:
+                    subprocess.Popen(["systemctl", "suspend"])
+                except Exception:
+                    pass
 
     def check_caps_lock(self):
         if not hasattr(self, 'caps_indicator') or not self.caps_indicator:
@@ -2301,9 +2340,15 @@ class MacOSLockWindow(Gtk.Window):
 
     def cleanup(self):
         self.unlocked = True
-        if self.monitors_off:
+        if MacOSLockWindow.monitors_off or self.monitors_off:
+            MacOSLockWindow.monitors_off = False
+            self.monitors_off = False
             try:
                 subprocess.Popen(["niri", "msg", "action", "power-on-monitors"])
+            except Exception:
+                pass
+            try:
+                subprocess.Popen(["brightnessctl", "--device=*kbd*", "--restore"])
             except Exception:
                 pass
         if self.gst_pipeline:
@@ -2392,6 +2437,35 @@ def main():
         lock.new_surface(win, mon)
         win.show_all()
         windows.append(win)
+
+    # Listen to system resume to immediately wake displays & reset inactivity
+    try:
+        sys_bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        if sys_bus:
+            def on_prepare_for_sleep(conn, sender, path, iface, signal, params, user_data):
+                try:
+                    going_to_sleep = params.get_child_value(0).get_boolean()
+                    if not going_to_sleep:
+                        def wake_up():
+                            for win_item in windows:
+                                win_item.reset_inactivity()
+                            return False
+                        GLib.idle_add(wake_up)
+                except Exception:
+                    pass
+
+            sys_bus.signal_subscribe(
+                'org.freedesktop.login1',
+                'org.freedesktop.login1.Manager',
+                'PrepareForSleep',
+                '/org/freedesktop/login1',
+                None,
+                Gio.DBusSignalFlags.NONE,
+                on_prepare_for_sleep,
+                None
+            )
+    except Exception:
+        pass
 
     # Periodic timers for Clock (1s), Media (1s), Idle Sleep (1s), and Status/Weather
     status_counter = [0]
