@@ -1,239 +1,47 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 36,
-    "spacing": 2,
-    "margin-top": 0,
-    "margin-bottom": 0,
-    "margin-left": 0,
-    "margin-right": 0,
+    "height": 34,
+    "spacing": 4,
 
-    "modules-left": [
-        "custom/logo",
-        "niri/window",
-        "custom/menu-file",
-        "custom/menu-edit",
-        "custom/menu-view",
-        "custom/menu-go",
-        "custom/menu-window",
-        "custom/menu-help"
-    ],
-    "modules-center": [],
-    "modules-right": [
-        "custom/media",
-        "tray",
-        "bluetooth",
-        "network",
-        "pulseaudio",
-        "backlight",
-        "battery",
-        "custom/notification",
-        "clock"
-    ],
+    "modules-left": ["custom/launcher", "niri/workspaces", "niri/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["group/media", "cpu", "memory", "bluetooth", "network", "group/audio", "battery", "custom/recorder", "custom/notification", "custom/power"],
 
-    "custom/logo": {
-        "format": "",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/logo_menu.xml",
-        "menu-actions": {
-            "about": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/about_mac.py",
-            "settings": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py",
-            "apps": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
-            "force": "niri msg action close-window",
-            "sleep": "systemctl suspend",
-            "reboot": "systemctl reboot",
-            "shutdown": "systemctl poweroff",
-            "lock": "/home/sreyas/.config/niri/lock-screen.sh",
-            "logout": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/power-menu.py"
-        }
-    },
-
-    "niri/window": {
-        "format": "{title}",
-        "rewrite": {
-            "(?i).*zen.*": "Zen Browser",
-            "(?i).*firefox.*": "Firefox",
-            "(?i).*chrome.*": "Google Chrome",
-            "(?i).*chromium.*": "Chromium",
-            "(?i).*edge.*": "Microsoft Edge",
-            "(?i).*kitty.*": "Terminal",
-            "(?i).*code.*": "Visual Studio Code",
-            "(?i).*nautilus.*": "Finder",
-            "(?i).*files.*": "Finder",
-            "(?i).*discord.*": "Discord",
-            "(?i).*settings.*": "System Settings",
-            "(?i).*spotify.*": "Spotify",
-            "(?i).*youtube music.*": "YouTube Music",
-            "(?i).*strawberry.*": "Strawberry",
-            "(?i).*vlc.*": "VLC Media Player",
-            "(?i).*lutris.*": "Lutris",
-            "(?i).*steam.*": "Steam",
-            "(?i).*obs.*": "OBS Studio",
-            "^$": "Finder"
-        },
-        "separate-outputs": false,
-        "tooltip": false
-    },
-
-    "custom/menu-file": {
-        "format": "File",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/file_menu.xml",
-        "menu-actions": {
-            "new_term": "kitty",
-            "new_files": "nautilus",
-            "new_browser": "flatpak run app.zen_browser.zen 2>/dev/null || firefox",
-            "new_text": "gnome-text-editor",
-            "close_win": "niri msg action close-window"
-        }
-    },
-
-    "custom/menu-edit": {
-        "format": "Edit",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/edit_menu.xml",
-        "menu-actions": {
-            "screenshot_area": "niri msg action screenshot",
-            "screenshot_screen": "niri msg action screenshot-screen",
-            "screenshot_win": "niri msg action screenshot-window",
-            "screen_record": "bash /home/sreyas/.config/niri/screen-recorder.sh",
-            "notifications": "swaync-client -t -sw"
-        }
-    },
-
-    "custom/menu-view": {
-        "format": "View",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/view_menu.xml",
-        "menu-actions": {
-            "overview": "niri msg action toggle-overview",
-            "fullscreen": "niri msg action maximize-column",
-            "column_width": "niri msg action switch-preset-column-width",
-            "wallpaper": "bash /home/sreyas/.config/niri/wallpaper-picker.sh",
-            "themes": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py --page appearance",
-            "nightlight": "bash /home/sreyas/.config/niri/night-light.sh toggle"
-        }
-    },
-
-    "custom/menu-go": {
-        "format": "Go",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/go_menu.xml",
-        "menu-actions": {
-            "apps": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
-            "home": "nautilus /home/sreyas",
-            "downloads": "nautilus /home/sreyas/Downloads",
-            "documents": "nautilus /home/sreyas/Documents",
-            "pictures": "nautilus /home/sreyas/Pictures",
-            "settings": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py"
-        }
-    },
-
-    "custom/menu-window": {
-        "format": "Window",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/window_menu.xml",
-        "menu-actions": {
-            "close": "niri msg action close-window",
-            "maximize": "niri msg action maximize-column",
-            "consume_left": "niri msg action consume-or-expel-window-left",
-            "consume_right": "niri msg action consume-or-expel-window-right",
-            "switcher": "/usr/bin/python3 /home/sreyas/.config/niri/window-switcher.py"
-        }
-    },
-
-    "custom/menu-help": {
-        "format": "Help",
-        "tooltip": false,
-        "menu": "on-click",
-        "menu-file": "/home/sreyas/.config/waybar/menus/help_menu.xml",
-        "menu-actions": {
-            "shortcuts": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py --page shortcuts",
-            "about": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py --page about",
-            "restart_waybar": "bash /home/sreyas/.config/waybar/switch-layout.sh macos",
-            "restart_dock": "pkill -9 -f macos-dock.py; sleep 0.2; /usr/bin/python3 /home/sreyas/.config/niri/macos-dock.py &"
-        }
-    },
-
-    "custom/media": {
-        "format": "{text}", 
+    "custom/recorder": {
+        "format": "{}",
         "return-type": "json",
-        "max-length": 24,
-        "exec": "$HOME/.config/waybar/mediaplayer.sh",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/media-popup.py",
-        "escape": false,
-        "tooltip": false
+        "exec": "$HOME/.config/niri/screen-recorder.sh --status",
+        "interval": 1,
+        "on-click": "$HOME/.config/niri/screen-recorder.sh --stop",
+        "signal": 8
     },
 
-    "tray": {
-        "icon-size": 16,
-        "spacing": 10
+    "custom/launcher": {
+        "format": "",
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
+        "on-click-right": "fuzzel",
+        "tooltip": "All Applications (Super+A)"
     },
 
-    "bluetooth": {
-        "format": "",
-        "format-connected": "",
-        "format-disabled": "󰂲",
-        "tooltip-format": "{controller_alias}\t{controller_address}",
-        "tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
-        "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/bluetooth-popup.py",
-        "on-click-right": "blueman-manager"
-    },
-
-    "network": {
-        "interval": 3,
-        "format-wifi": "",
-        "format-ethernet": "󰈀",
-        "format-disconnected": "⚠",
-        "tooltip-format": "{ifname}: {ipaddr}/{cidr}\nSSID: {essid} ({signalStrength}%)\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
-        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/wifi-popup.py",
-        "on-click-right": "nm-connection-editor"
-    },
-
-    "pulseaudio": {
-        "format": "{icon}",
-        "format-muted": "",
-        "format-icons": {
-            "default": ["", "", "", "", "", "", "", "", ""]
-        },
-        "tooltip-format": "Volume: {volume}%",
-        "on-click": "pavucontrol",
-        "on-click-right": "bash ~/.config/waybar/audio-sink-switcher.sh",
-        "scroll-step": 2
-    },
-
-    "backlight": {
-        "device": "amdgpu_bl1",
-        "format": "󰍹",
-        "tooltip-format": "Brightness: {percent}%",
-        "tooltip": true,
-        "on-scroll-up": "brightnessctl set +5%",
-        "on-scroll-down": "brightnessctl set 5%-"
-    },
-
-    "battery": {
-        "bat": "BAT0",
-        "adapter": "ADP0",
-        "interval": 2,
-        "format": "{icon}",
-        "format-icons": ["", "", "", "", ""],
-        "format-charging": "󰢝",
-        "format-plugged": "",
-        "tooltip-format": "Battery: {capacity}%\n{timeTo}",
-        "on-click": "kitty -e btop",
-        "justify": "center"
+    "niri/workspaces": {
+        "format": "{index}",
+        "all-outputs": true
     },
 
     "custom/notification": {
         "tooltip": false,
-        "format": "󱅫",
+        "format": "{icon}",
+        "format-icons": {
+            "notification": "󱅫 ",
+            "none": "󰂜 ",
+            "dnd-notification": "󰂛 ",
+            "dnd-none": "󰪑 ",
+            "inhibited-notification": "󱅫 ",
+            "inhibited-none": "󰂜 ",
+            "dnd-inhibited-notification": "󰂛 ",
+            "dnd-inhibited-none": "󰪑 "
+        },
         "return-type": "json",
         "exec-if": "which swaync-client",
         "exec": "swaync-client -swb",
@@ -243,9 +51,147 @@
     },
 
     "clock": {
-        "format": "{:%a %b %d  %I:%M %p}",
+        "format": " {:%I:%M %p}", 
+        "format-alt": " {:%A, %B %d, %Y}",
         "tooltip": false,
-        "on-click": "swaync-client -t -sw",
-        "on-click-right": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/dashboard.py"
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/dashboard.py",
+        "actions": {
+            "on-click-right": "mode"
+        }
+    },
+
+    "custom/weather": {
+        "format": "{}",
+        "return-type": "json",
+        "interval": 1800,
+        "exec": "bash ~/.config/waybar/weather.sh",
+        "on-click": "bash ~/.config/waybar/weather.sh"
+    },
+
+    "cpu": { 
+        "interval": 2,
+        "format": " {usage}%",
+        "on-click": "kitty --class=system-monitor -e btop"
+    },
+
+    "memory": {
+        "interval": 10,
+        "format": " {percentage}%",
+        "tooltip-format": "{used}GiB / {total}GiB ({percentage}%)",
+        "max-length": 10,
+        "on-click": "kitty --class=system-monitor -e btop"
+    },
+    
+    "bluetooth": {
+        "format": " {status}",
+        "format-connected": " {device_alias}",
+        "format-disabled": "󰂲",
+        "max-length": 12,
+        "tooltip-format-connected": "{device_alias}",
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/bluetooth-popup.py",
+        "on-click-right": "blueman-manager"
+    },
+
+    "network": {
+        "interval": 2,
+        "format-wifi": " {essid}",
+        "format-ethernet": "󰈀 Wired",
+        "format-linked": "󰈀 {ifname}",
+        "format-disconnected": "⚠ Disconnected",
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr} via {gwaddr}\nSignal: {signalStrength}%\n󰕒 {bandwidthUpBits}  󰇚 {bandwidthDownBits}",
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/wifi-popup.py",
+        "on-click-right": "nm-connection-editor"
+    },
+
+    "group/audio": {
+        "orientation": "inherit",
+        "drawer": {
+            "transition-duration": 300,
+            "children-class": "audio-slider-drawer",
+            "transition-left-to-right": false
+        },
+        "modules": [
+            "pulseaudio",
+            "pulseaudio/slider"
+        ]
+    },
+
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": "",
+        "format-icons": { "default": ["", "", ""] },
+        "on-click": "pavucontrol",
+        "on-click-right": "bash ~/.config/waybar/audio-sink-switcher.sh"
+    },
+
+    "pulseaudio/slider": {
+        "min": 0,
+        "max": 100,
+        "orientation": "horizontal"
+    },
+
+    "battery": {
+        "bat": "BAT0",
+        "adapter": "ADP0",
+        "interval": 2,
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-charging": "󰂄 {capacity}%",
+        "format-plugged": " {capacity}%",
+        "format-alt": "{time} {icon}",
+        "format-icons": ["", "", "", "", ""],
+        "tooltip-format": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-charging": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-discharging": "Capacity: {capacity}%\n{timeTo}",
+        "tooltip-format-plugged": "Capacity: {capacity}%\nPlugged in",
+        "tooltip-format-not-charging": "Capacity: {capacity}%\nPlugged in (Conservation Mode)",
+        "tooltip-format-full": "Capacity: {capacity}%\nFully Charged"
+    },
+
+    "custom/power": {
+        "format": "⏻ ",
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/waybar/scripts/power-menu.py",
+        "tooltip": "Power Menu (Super+Escape)"
+    },
+
+    "group/media": {
+        "orientation": "horizontal",
+        "modules": [
+            "custom/media",
+            "custom/prev",
+            "custom/playpause",
+            "custom/next"
+        ]
+    },
+
+    "custom/media": {
+        "format": "{text}", 
+        "return-type": "json",
+        "max-length": 22,
+        "exec": "$HOME/.config/waybar/mediaplayer.sh",
+        "on-click": "/usr/bin/python3 $HOME/.config/waybar/scripts/media-popup.py",
+        "escape": false,
+        "tooltip": false
+    },
+
+    "custom/prev": {
+        "format": "󰒮", 
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh previous",
+        "tooltip": false
+    },
+
+    "custom/playpause": {
+        "format": "󰐎",
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh play-pause",
+        "tooltip": false
+    },
+
+    "custom/next": {
+        "format": "󰒭",
+        "on-click": "$HOME/.config/waybar/media-ctrl.sh next",
+        "tooltip": false
     }
 }

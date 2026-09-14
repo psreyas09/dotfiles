@@ -18,7 +18,7 @@ gi.require_version('GtkLayerShell', '0.1')
 gi.require_version('Playerctl', '2.0')
 gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
-from gi.repository import Gtk, Gdk, GtkLayerShell, Playerctl, GLib, GdkPixbuf, Pango, PangoCairo
+from gi.repository import Gtk, Gdk, GtkLayerShell, Playerctl, GLib, GLibUnix, GdkPixbuf, Pango, PangoCairo
 
 PID_FILE = "/tmp/waybar_media_popup.pid"
 app_instance = None
@@ -1505,7 +1505,8 @@ class MediaPopup(Gtk.Window):
             self.player_counter_label.set_text("")
             if hasattr(self, "btn_open_window"):
                 self.btn_open_window.set_sensitive(False)
-                self.btn_open_window.set_visible(False)
+                self.btn_open_window.set_visible(True)
+                self.btn_open_window.set_tooltip_text("No active player window")
             return
 
         icon, name = self.get_player_info(self.player)
@@ -2013,8 +2014,9 @@ class MediaPopup(Gtk.Window):
 
 def main():
     global app_instance
-    # If daemon already running, toggle it via SIGUSR1 and exit immediately
-    toggle_or_exit()
+    is_daemon = "--daemon" in sys.argv
+    if not is_daemon:
+        toggle_or_exit()
 
     # Write PID file (stays alive for the lifetime of the daemon)
     with open(PID_FILE, "w") as f:
@@ -2027,11 +2029,17 @@ def main():
     app_instance = app
 
     # SIGUSR1 = toggle show/hide (instant, no cold-start)
-    signal.signal(signal.SIGUSR1, lambda *_: GLib.idle_add(app.toggle_window))
+    # Using GLibUnix.signal_add guarantees instant dispatch inside GTK main loop
+    GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda *_: (app.toggle_window(), True)[1])
 
-    # Start hidden — first click will show via SIGUSR1
-    app.hide()
+    # If launched with --daemon, start hidden in background; otherwise show immediately on click
+    if is_daemon:
+        app.hide()
+    else:
+        app.show_animated()
+
     Gtk.main()
 
 if __name__ == "__main__":
     main()
+
