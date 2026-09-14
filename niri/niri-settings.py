@@ -879,6 +879,24 @@ def set_autolock_config(enabled=None, timeout=None, lockscreen_action=None, lock
             pass
 
 
+WAYBAR_LAYOUT_STATE = os.path.expanduser("~/.config/waybar/layout.json")
+
+def get_current_waybar_layout():
+    if os.path.exists(WAYBAR_LAYOUT_STATE):
+        try:
+            with open(WAYBAR_LAYOUT_STATE, "r") as f:
+                data = json.load(f)
+                return data.get("layout", "default")
+        except Exception:
+            pass
+    return "default"
+
+def set_waybar_layout(layout_name):
+    script = os.path.expanduser("~/.config/waybar/switch-layout.sh")
+    if os.path.exists(script):
+        async_cmd(f"bash '{script}' '{layout_name}'")
+
+
 class AvatarCropDialog(Gtk.Dialog):
     """Interactive Crop, Pan, Zoom, and Rotation Dialog for Profile Pictures"""
     def __init__(self, parent, image_path):
@@ -2873,6 +2891,52 @@ class NiriSettingsApp(Gtk.Window):
             "Smoothly slides up and stays visible whenever Overview (Mod+D) is active",
             Gtk.Label(label="Enabled")
         ))
+
+        # Waybar Top Bar Layouts Card
+        vbox.pack_start(Gtk.Label(label="WAYBAR TOP BAR STYLE & LAYOUT", xalign=0, name="section-caption"), False, False, 0)
+        wb_layout_card = SettingsCard()
+        vbox.pack_start(wb_layout_card, False, False, 0)
+
+        cur_wb_layout = get_current_waybar_layout()
+        wb_buttons = {}
+
+        def on_switch_waybar_layout(target_id):
+            set_waybar_layout(target_id)
+            for lid, b in wb_buttons.items():
+                if lid == target_id:
+                    b.set_label("Active")
+                    b.set_sensitive(False)
+                else:
+                    b.set_label("Apply")
+                    b.set_sensitive(True)
+
+        layouts_info = [
+            (
+                "default",
+                "Default (Modern Floating Bar)",
+                "Floating dark pill bar with Fedora launcher, workspaces, media controls & hardware monitors",
+                "preferences-desktop-theme"
+            ),
+            (
+                "macos",
+                "macOS Menu Bar",
+                "Edge-to-edge Apple menu bar with  logo, app menu items, active window & clean status extras",
+                "user-desktop"
+            )
+        ]
+
+        for lid, title, desc, icon_name in layouts_info:
+            is_active = (lid == cur_wb_layout)
+            btn = Gtk.Button(label="Active" if is_active else "Apply")
+            btn.set_sensitive(not is_active)
+            btn.connect("clicked", lambda _, tid=lid: on_switch_waybar_layout(tid))
+            wb_buttons[lid] = btn
+            wb_layout_card.add_row(create_setting_row(
+                icon_name,
+                title,
+                desc,
+                btn
+            ))
 
         # Top Bar & Daemons Card
         vbox.pack_start(Gtk.Label(label="DESKTOP SHELL SERVICES", xalign=0, name="section-caption"), False, False, 0)
