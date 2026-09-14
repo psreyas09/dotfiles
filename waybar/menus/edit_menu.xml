@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object class="GtkMenu" id="menu">
+        <child>
+            <object class="GtkMenuItem" id="screenshot_area">
+                <property name="label">Capture Selected Area...</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="screenshot_screen">
+                <property name="label">Capture Entire Screen</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="screenshot_win">
+                <property name="label">Capture Active Window</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep1" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="screen_record">
+                <property name="label">Record Screen Video...</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep2" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="notifications">
+                <property name="label">Open Notification Center</property>
+            </object>
+        </child>
+    </object>
+</interface>

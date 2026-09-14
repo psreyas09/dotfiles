@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object class="GtkMenu" id="menu">
+        <child>
+            <object class="GtkMenuItem" id="new_term">
+                <property name="label">New Terminal Window</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="new_files">
+                <property name="label">New File Manager Window</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="new_browser">
+                <property name="label">New Browser Window</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="new_text">
+                <property name="label">New Text Document</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep1" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="close_win">
+                <property name="label">Close Window</property>
+            </object>
+        </child>
+    </object>
+</interface>

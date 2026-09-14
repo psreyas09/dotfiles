@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object class="GtkMenu" id="menu">
+        <child>
+            <object class="GtkMenuItem" id="shortcuts">
+                <property name="label">Niri Keyboard Shortcuts</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="about">
+                <property name="label">About System &amp; Hardware</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep1" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="restart_waybar">
+                <property name="label">Reload Waybar Top Bar</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="restart_dock">
+                <property name="label">Restart Bottom Dock</property>
+            </object>
+        </child>
+    </object>
+</interface>

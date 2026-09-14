@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object class="GtkMenu" id="menu">
+        <child>
+            <object class="GtkMenuItem" id="overview">
+                <property name="label">Mission Control / Overview</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="fullscreen">
+                <property name="label">Maximize Column / Fullscreen</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="column_width">
+                <property name="label">Switch Column Width</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep1" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="wallpaper">
+                <property name="label">Change Desktop Wallpaper...</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="themes">
+                <property name="label">Switch System Themes...</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="nightlight">
+                <property name="label">Night Light (Eye Comfort)</property>
+            </object>
+        </child>
+    </object>
+</interface>

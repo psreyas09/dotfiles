@@ -8,9 +8,28 @@
     "margin-left": 0,
     "margin-right": 0,
 
-    "modules-left": ["custom/logo", "niri/window", "custom/appmenu"],
+    "modules-left": [
+        "custom/logo",
+        "niri/window",
+        "custom/menu-file",
+        "custom/menu-edit",
+        "custom/menu-view",
+        "custom/menu-go",
+        "custom/menu-window",
+        "custom/menu-help"
+    ],
     "modules-center": [],
-    "modules-right": ["custom/media", "tray", "bluetooth", "network", "pulseaudio", "backlight", "battery", "custom/notification", "clock"],
+    "modules-right": [
+        "custom/media",
+        "tray",
+        "bluetooth",
+        "network",
+        "pulseaudio",
+        "backlight",
+        "battery",
+        "custom/notification",
+        "clock"
+    ],
 
     "custom/logo": {
         "format": "",
@@ -57,9 +76,89 @@
         "tooltip": false
     },
 
-    "custom/appmenu": {
-        "format": "File    Edit    View    Go    Window    Help",
-        "tooltip": false
+    "custom/menu-file": {
+        "format": "File",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/file_menu.xml",
+        "menu-actions": {
+            "new_term": "kitty",
+            "new_files": "nautilus",
+            "new_browser": "flatpak run app.zen_browser.zen 2>/dev/null || firefox",
+            "new_text": "gnome-text-editor",
+            "close_win": "niri msg action close-window"
+        }
+    },
+
+    "custom/menu-edit": {
+        "format": "Edit",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/edit_menu.xml",
+        "menu-actions": {
+            "screenshot_area": "niri msg action screenshot",
+            "screenshot_screen": "niri msg action screenshot-screen",
+            "screenshot_win": "niri msg action screenshot-window",
+            "screen_record": "bash /home/sreyas/.config/niri/screen-recorder.sh",
+            "notifications": "swaync-client -t -sw"
+        }
+    },
+
+    "custom/menu-view": {
+        "format": "View",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/view_menu.xml",
+        "menu-actions": {
+            "overview": "niri msg action toggle-overview",
+            "fullscreen": "niri msg action maximize-column",
+            "column_width": "niri msg action switch-preset-column-width",
+            "wallpaper": "bash /home/sreyas/.config/niri/wallpaper-picker.sh",
+            "themes": "bash /home/sreyas/.config/niri/theme-switcher.sh",
+            "nightlight": "bash /home/sreyas/.config/niri/night-light.sh toggle"
+        }
+    },
+
+    "custom/menu-go": {
+        "format": "Go",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/go_menu.xml",
+        "menu-actions": {
+            "apps": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
+            "home": "nautilus /home/sreyas",
+            "downloads": "nautilus /home/sreyas/Downloads",
+            "documents": "nautilus /home/sreyas/Documents",
+            "pictures": "nautilus /home/sreyas/Pictures",
+            "settings": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py"
+        }
+    },
+
+    "custom/menu-window": {
+        "format": "Window",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/window_menu.xml",
+        "menu-actions": {
+            "close": "niri msg action close-window",
+            "maximize": "niri msg action maximize-column",
+            "consume_left": "niri msg action consume-or-expel-window-left",
+            "consume_right": "niri msg action consume-or-expel-window-right",
+            "switcher": "/usr/bin/python3 /home/sreyas/.config/niri/window-switcher.py"
+        }
+    },
+
+    "custom/menu-help": {
+        "format": "Help",
+        "tooltip": false,
+        "menu": "on-click",
+        "menu-file": "/home/sreyas/.config/waybar/menus/help_menu.xml",
+        "menu-actions": {
+            "shortcuts": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py",
+            "about": "/usr/bin/python3 /home/sreyas/.config/niri/niri-settings.py",
+            "restart_waybar": "bash /home/sreyas/.config/waybar/switch-layout.sh macos",
+            "restart_dock": "pkill -9 -f macos-dock.py; sleep 0.2; /usr/bin/python3 /home/sreyas/.config/niri/macos-dock.py &"
+        }
     },
 
     "custom/media": {

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object class="GtkMenu" id="menu">
+        <child>
+            <object class="GtkMenuItem" id="close">
+                <property name="label">Close Window (Mod+Q)</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="maximize">
+                <property name="label">Maximize Column (Mod+F)</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep1" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="consume_left">
+                <property name="label">Consume / Expel Window Left</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="consume_right">
+                <property name="label">Consume / Expel Window Right</property>
+            </object>
+        </child>
+        <child>
+            <object class="GtkSeparatorMenuItem" id="sep2" />
+        </child>
+        <child>
+            <object class="GtkMenuItem" id="switcher">
+                <property name="label">App Switcher HUD (Super+Tab)</property>
+            </object>
+        </child>
+    </object>
+</interface>

@@ -233,14 +233,6 @@ layer-rule {
     }
 }
 
-// Hardware-accelerated background blur for Waybar top status bar
-layer-rule {
-    match namespace="^waybar$"
-    background-effect {
-        blur true
-    }
-}
-
 // The application launcher is a full-screen frosted overlay, including the
 // area occupied by Waybar's top layer.
 layer-rule {

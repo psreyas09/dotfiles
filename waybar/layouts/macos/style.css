@@ -3,7 +3,7 @@
 
 * {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Adwaita Sans", "Cantarell", sans-serif;
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 500;
     border: none;
     border-radius: 0px;
@@ -15,14 +15,14 @@ window#waybar {
 }
 
 window#waybar > box {
-    background: alpha(@bg-color, 0.82);
+    background: alpha(@bg-color, 0.92);
     border-bottom: 1px solid alpha(@border-color, 0.35);
     min-height: 28px;
-    padding: 0 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    padding: 0 8px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* Left Section */
+/* Left Section - Apple Logo */
 #custom-logo {
     font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
     font-size: 16px;
@@ -30,7 +30,7 @@ window#waybar > box {
     margin-right: 2px;
     color: @fg-color;
     border-radius: 4px;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 #custom-logo:hover {
@@ -38,34 +38,53 @@ window#waybar > box {
     color: @accent-purple;
 }
 
+/* Active Window / App Title */
 #window {
     font-weight: 700;
-    font-size: 13.5px;
+    font-size: 13px;
     padding: 0 8px;
     color: @fg-color;
     border-radius: 4px;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 #window:hover {
     background: alpha(@accent-purple, 0.2);
 }
 
-#custom-appmenu {
+/* macOS Interactive Menu Bar Items: File, Edit, View, Go, Window, Help */
+#custom-menu-file,
+#custom-menu-edit,
+#custom-menu-view,
+#custom-menu-go,
+#custom-menu-window,
+#custom-menu-help {
     font-size: 13px;
     font-weight: 500;
-    padding: 0 8px;
-    color: alpha(@fg-color, 0.85);
-    letter-spacing: 0.3px;
+    padding: 0 6px;
+    margin: 2px 1px;
+    color: alpha(@fg-color, 0.9);
+    border-radius: 4px;
+    transition: all 0.12s ease-in-out;
+}
+
+#custom-menu-file:hover,
+#custom-menu-edit:hover,
+#custom-menu-view:hover,
+#custom-menu-go:hover,
+#custom-menu-window:hover,
+#custom-menu-help:hover {
+    background: alpha(@accent-purple, 0.25);
+    color: @accent-purple;
 }
 
 /* Right Section Extras */
 #custom-media {
-    font-size: 12.5px;
+    font-size: 12px;
     padding: 0 8px;
     margin: 2px 4px;
     border-radius: 6px;
-    background: alpha(@bg-color, 0.5);
+    background: alpha(@bg-color, 0.6);
     color: @accent-purple;
 }
 
@@ -88,12 +107,12 @@ window#waybar > box {
 #backlight,
 #battery,
 #custom-notification {
-    padding: 0 6px;
+    padding: 0 5px;
     margin: 0 1px;
-    font-size: 13.5px;
+    font-size: 13px;
     color: @fg-color;
     border-radius: 4px;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 #bluetooth:hover,
@@ -117,12 +136,12 @@ window#waybar > box {
 
 #clock {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12.5px;
     padding: 0 8px;
     margin-left: 4px;
     color: @fg-color;
     border-radius: 4px;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.12s ease-in-out;
 }
 
 #clock:hover {
@@ -145,12 +164,12 @@ tooltip label {
     font-size: 12.5px;
 }
 
-/* Native GTK Apple Logo Popup Menu */
+/* Native GTK Dropdown Menus */
 menu {
-    background: alpha(@bg-color, 0.94);
+    background: alpha(@bg-color, 0.96);
     border: 1px solid alpha(@border-color, 0.45);
-    border-radius: 10px;
-    padding: 6px;
+    border-radius: 8px;
+    padding: 5px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
@@ -159,10 +178,10 @@ menuitem {
     font-size: 13px;
     font-weight: 500;
     padding: 5px 14px;
-    margin: 2px 0;
-    border-radius: 6px;
+    margin: 1px 0;
+    border-radius: 5px;
     color: @fg-color;
-    transition: all 0.12s ease;
+    transition: all 0.1s ease;
 }
 
 menuitem:hover {
