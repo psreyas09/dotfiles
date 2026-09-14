@@ -19,7 +19,7 @@
 
     "custom/launcher": {
         "format": "",
-        "on-click": "rofi -show All -theme ~/.config/rofi/gnome-grid.rasi",
+        "on-click": "/usr/bin/python3 /home/sreyas/.config/niri/app-grid.py",
         "on-click-right": "fuzzel",
         "tooltip": "All Applications (Super+A)"
     },
