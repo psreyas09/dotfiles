@@ -3,7 +3,7 @@
 
 * {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Adwaita Sans", "Cantarell", sans-serif;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
     border: none;
     border-radius: 0px;
@@ -17,19 +17,19 @@ window#waybar {
 window#waybar > box {
     background: alpha(@bg-color, 0.92);
     border-bottom: 1px solid alpha(@border-color, 0.35);
-    min-height: 28px;
-    padding: 0 8px;
+    min-height: 36px;
+    padding: 0 10px;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
 
 /* Left Section - Apple Logo */
 #custom-logo {
     font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
-    font-size: 16px;
-    padding: 0 8px;
+    font-size: 20px;
+    padding: 0 10px;
     margin-right: 2px;
     color: @fg-color;
-    border-radius: 4px;
+    border-radius: 5px;
     transition: all 0.12s ease-in-out;
 }
 
@@ -41,10 +41,10 @@ window#waybar > box {
 /* Active Window / App Title */
 #window {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 13.5px;
     padding: 0 8px;
     color: @fg-color;
-    border-radius: 4px;
+    border-radius: 5px;
     transition: all 0.12s ease-in-out;
 }
 
@@ -59,12 +59,12 @@ window#waybar > box {
 #custom-menu-go,
 #custom-menu-window,
 #custom-menu-help {
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
-    padding: 0 6px;
+    padding: 0 7px;
     margin: 2px 1px;
-    color: alpha(@fg-color, 0.9);
-    border-radius: 4px;
+    color: alpha(@fg-color, 0.92);
+    border-radius: 5px;
     transition: all 0.12s ease-in-out;
 }
 
@@ -80,9 +80,9 @@ window#waybar > box {
 
 /* Right Section Extras */
 #custom-media {
-    font-size: 12px;
-    padding: 0 8px;
-    margin: 2px 4px;
+    font-size: 12.5px;
+    padding: 0 10px;
+    margin: 3px 4px;
     border-radius: 6px;
     background: alpha(@bg-color, 0.6);
     color: @accent-purple;
@@ -90,7 +90,7 @@ window#waybar > box {
 
 #tray {
     padding: 0 6px;
-    margin: 0 2px;
+    margin: 0 4px;
 }
 
 #tray > .passive {
@@ -101,17 +101,28 @@ window#waybar > box {
     -gtk-icon-effect: highlight;
 }
 
+/* Right Status Icons - Styled cleanly matching macOS and luyu-wu/Config */
 #bluetooth,
 #network,
 #pulseaudio,
 #backlight,
-#battery,
 #custom-notification {
-    padding: 0 5px;
-    margin: 0 1px;
-    font-size: 13px;
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
+    font-size: 17px;
+    padding: 0 8px;
+    margin: 2px 1px;
     color: @fg-color;
-    border-radius: 4px;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
+}
+
+#battery {
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
+    font-size: 19px;
+    padding: 0 8px;
+    margin: 2px 1px;
+    color: @fg-color;
+    border-radius: 5px;
     transition: all 0.12s ease-in-out;
 }
 
@@ -121,7 +132,7 @@ window#waybar > box {
 #backlight:hover,
 #battery:hover,
 #custom-notification:hover {
-    background: alpha(@accent-purple, 0.2);
+    background: alpha(@accent-purple, 0.25);
     color: @accent-purple;
 }
 
@@ -135,12 +146,13 @@ window#waybar > box {
 }
 
 #clock {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
     font-weight: 600;
-    font-size: 12.5px;
-    padding: 0 8px;
+    font-size: 13px;
+    padding: 0 10px;
     margin-left: 4px;
     color: @fg-color;
-    border-radius: 4px;
+    border-radius: 5px;
     transition: all 0.12s ease-in-out;
 }
 
@@ -159,7 +171,7 @@ tooltip {
 }
 
 tooltip label {
-    font-family: "Adwaita Sans", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Adwaita Sans", sans-serif;
     color: @fg-color;
     font-size: 12.5px;
 }
@@ -169,13 +181,13 @@ menu {
     background: alpha(@bg-color, 0.96);
     border: 1px solid alpha(@border-color, 0.45);
     border-radius: 8px;
-    padding: 5px;
+    padding: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 menuitem {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Adwaita Sans", sans-serif;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
     padding: 5px 14px;
     margin: 1px 0;

@@ -4471,16 +4471,32 @@ class NiriSettingsApp(Gtk.Window):
 
 
 def main():
-    app = NiriSettingsApp()
-    app.connect("destroy", Gtk.main_quit)
+    target_page = None
     if "--page" in sys.argv:
         try:
-            pid = sys.argv[sys.argv.index("--page") + 1]
-            app.switch_to_page(pid)
+            target_page = sys.argv[sys.argv.index("--page") + 1]
         except Exception:
             pass
+    if not target_page:
+        valid_pages = [
+            "about", "shortcuts", "dock", "display", "appearance", "users",
+            "mouse", "keyboard", "sound", "network", "notifications",
+            "defaults", "power", "security", "storage"
+        ]
+        for arg in sys.argv[1:]:
+            if arg.startswith("--"):
+                candidate = arg[2:]
+                if candidate in valid_pages:
+                    target_page = candidate
+                    break
+
+    app = NiriSettingsApp()
+    app.connect("destroy", Gtk.main_quit)
     app.show_all()
+    if target_page:
+        app.switch_to_page(target_page)
     Gtk.main()
 
 if __name__ == "__main__":
     main()
+

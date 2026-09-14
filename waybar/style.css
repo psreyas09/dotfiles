@@ -1,307 +1,207 @@
-/* Waybar Master Style - Dynamic Wallust & Preset Theme Variables */
-@import url("current-theme.css");
+/* macOS Menu Bar Style for Waybar */
+@import "current-theme.css";
 
 * {
-    font-family: "Symbols Nerd Font", "Font Awesome 6 Free", "Font Awesome 6 Free Solid", "JetBrains Mono", sans-serif;
-    font-size: 13px;
-    font-weight: bold;
-    transition: all 0.2s ease-in-out;
-    box-shadow: none;
-    text-shadow: none;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Adwaita Sans", "Cantarell", sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    border: none;
+    border-radius: 0px;
 }
 
 window#waybar {
     background: transparent;
-    border: none;
-    box-shadow: none;
-}
-
-tooltip {
-    background: alpha(@bg-color, 0.95);
-    border: 1px solid alpha(@border-color, 0.8);
-    border-radius: 10px;
-    padding: 6px 10px;
-}
-
-tooltip label {
-    font-family: "JetBrains Mono", sans-serif, "Symbols Nerd Font";
-    font-size: 13px;
-    font-weight: normal;
     color: @fg-color;
 }
 
-calendar {
-    background-color: alpha(@bg-color, 0.95);
-    border: 1.5px solid alpha(@border-color, 0.8);
-    border-radius: 12px;
-    padding: 8px;
+window#waybar > box {
+    background: alpha(@bg-color, 0.92);
+    border-bottom: 1px solid alpha(@border-color, 0.35);
+    min-height: 36px;
+    padding: 0 10px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
 }
 
-calendar label {
-    font-family: "JetBrains Mono", sans-serif;
-    font-size: 13px;
+/* Left Section - Apple Logo */
+#custom-logo {
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
+    font-size: 20px;
+    padding: 0 10px;
+    margin-right: 2px;
     color: @fg-color;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
 }
 
-/* Dynamic Glass Pill Containers - Adapts to Wallust wallpaper palette */
-#custom-launcher, #workspaces, #window, #clock, #cpu, #memory, #network, #bluetooth, #backlight, #audio, #group-audio, #battery, #custom-recorder, #custom-notification, #custom-power {
-    background-color: alpha(@bg-color, 0.88);
-    color: @fg-color;
-    margin: 5px 2px;
-    padding: 0px 9px;
-    border-radius: 12px;
-    border: 1.5px solid alpha(@border-color, 0.7);
-    box-shadow: none;
-    text-shadow: none;
-}
-
-#clock:hover {
-    background-color: alpha(@bg-color, 0.95); /* less transparent */
-    border: none;
-}
-
-#workspaces button {
-    color: @comment-color;
-    padding: 0 8px;
-    margin: 2px 2px;
-    border-radius: 8px;
-    font-size: 14px;
-    box-shadow: none;
-}
-
-#workspaces button:hover {
-    color: @fg-color;
-    background-color: alpha(@fg-color, 0.15);
-    border-radius: 8px;
-}
-
-#workspaces button.focused, #workspaces button.active {
+#custom-logo:hover {
+    background: alpha(@accent-purple, 0.25);
     color: @accent-purple;
-    background-color: alpha(@accent-purple, 0.25);
-    border-radius: 8px;
 }
 
+/* Active Window / App Title */
 #window {
-    color: @accent-blue;
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 0 8px;
+    color: @fg-color;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
 }
 
-#clock {
-    font-family: "JetBrains Mono", "Symbols Nerd Font", sans-serif;
+#window:hover {
+    background: alpha(@accent-purple, 0.2);
+}
+
+/* macOS Interactive Menu Bar Items: File, Edit, View, Go, Window, Help */
+#custom-menu-file,
+#custom-menu-edit,
+#custom-menu-view,
+#custom-menu-go,
+#custom-menu-window,
+#custom-menu-help {
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 0 7px;
+    margin: 2px 1px;
+    color: alpha(@fg-color, 0.92);
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
+}
+
+#custom-menu-file:hover,
+#custom-menu-edit:hover,
+#custom-menu-view:hover,
+#custom-menu-go:hover,
+#custom-menu-window:hover,
+#custom-menu-help:hover {
+    background: alpha(@accent-purple, 0.25);
     color: @accent-purple;
 }
 
-#cpu {
-    color: @accent-yellow;
-}
-
-#memory {
-    color: @accent-cyan;
-}
-
-#bluetooth {
-    color: @accent-blue;
-}
-
-#network {
+/* Right Section Extras */
+#custom-media {
+    font-size: 12.5px;
+    padding: 0 10px;
+    margin: 3px 4px;
+    border-radius: 6px;
+    background: alpha(@bg-color, 0.6);
     color: @accent-purple;
 }
 
-#pulseaudio {
-    color: @accent-green;
+#tray {
+    padding: 0 6px;
+    margin: 0 4px;
 }
 
-#group-audio #pulseaudio,
-#audio #pulseaudio {
-    background: transparent;
-    border: none;
-    margin: 0;
-    padding: 0 4px;
+#tray > .passive {
+    -gtk-icon-effect: dim;
 }
 
-#pulseaudio-slider {
-    padding: 0 4px;
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
 }
 
-#pulseaudio-slider,
-#pulseaudio-slider * {
-    transition: none;
-    box-shadow: none;
-}
-
-#pulseaudio-slider slider {
-    min-height: 0px;
-    min-width: 0px;
-    opacity: 0;
-    background-image: none;
-    border: none;
-    box-shadow: none;
-}
-
-#pulseaudio-slider trough {
-    min-height: 8px;
-    min-width: 75px;
-    border-radius: 4px;
-    background-color: rgba(0, 0, 0, 0.45);
-    border: 1px solid alpha(@border-color, 0.4);
-    box-shadow: none;
-}
-
-#pulseaudio-slider highlight {
-    min-width: 8px;
-    border-radius: 4px;
-    background-color: @accent-green;
-    box-shadow: none;
+/* Right Status Icons - Styled cleanly matching macOS and luyu-wu/Config */
+#bluetooth,
+#network,
+#pulseaudio,
+#backlight,
+#custom-notification {
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
+    font-size: 17px;
+    padding: 0 8px;
+    margin: 2px 1px;
+    color: @fg-color;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
 }
 
 #battery {
-    color: @accent-green;
-}
-
-#battery.charging {
-    color: @accent-green;
-}
-
-#battery.warning {
-    color: @accent-orange;
-    border-color: alpha(@accent-orange, 0.7);
-}
-
-#battery.critical {
-    color: @accent-red;
-    border-color: alpha(@accent-red, 0.9);
-    animation: blink 1.2s infinite alternate;
-}
-
-@keyframes blink {
-    to {
-        opacity: 0.4;
-    }
-}
-
-#custom-notification {
-    color: @accent-purple;
-}
-
-#custom-notification:hover {
-    background-color: alpha(@accent-purple, 0.25);
-    border-color: @accent-purple;
-}
-
-#custom-launcher {
-    color: @accent-blue;
-    background-color: alpha(@bg-color, 0.95);
-    border: 1.5px solid alpha(@accent-blue, 0.75);
-    padding: 0px 14px;
-    margin-left: 8px;
-    font-size: 15px;
-    box-shadow: none;
-}
-
-#custom-launcher:hover {
-    color: @bg-color;
-    background-color: @accent-blue;
-    border-color: @accent-blue;
-    box-shadow: none;
-}
-
-#custom-power {
-    color: @accent-red;
-    background-color: alpha(@bg-color, 0.95);
-    border: 1.5px solid alpha(@accent-red, 0.75);
-    padding: 0px 14px;
-    margin-right: 8px;
-    box-shadow: none;
-}
-
-#custom-power:hover {
-    color: @bg-color;
-    background-color: @accent-red;
-    border-color: @accent-red;
-    box-shadow: none;
-}
-
-/* Unique Mini-Player Pill for Music */
-/* Music Module - Action boxes only (no outer container) */
-#media,
-#group-media {
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 5px 2px;
-    box-shadow: none;
-}
-
-#custom-media {
-    color: @fg-color;
-    font-family: "Noto Sans", "JetBrains Mono NL", sans-serif;
-    font-feature-settings: "liga 0, clig 0, dlig 0, calt 0";
-    font-weight: bold;
-    font-size: 12.5px;
-    padding: 0 8px 0 0;
-    text-shadow: none;
-}
-
-/* Tactile playback button keycaps */
-#custom-prev, #custom-next {
-    color: @accent-purple;
-    background-color: alpha(@accent-purple, 0.15);
-    border: 1px solid alpha(@accent-purple, 0.3);
-    font-size: 13px;
-    font-weight: bold;
-    padding: 0 7px;
-    margin: 3px 2px;
-    border-radius: 6px;
-    text-shadow: none;
-}
-
-#custom-playpause {
-    color: @bg-color;
-    background-color: @accent-purple;
-    border: 1px solid @accent-purple;
-    font-size: 13px;
-    font-weight: bold;
+    font-family: "Symbols Nerd Font", "Font Awesome 6 Free Solid", sans-serif;
+    font-size: 19px;
     padding: 0 8px;
-    margin: 3px 2px;
-    border-radius: 6px;
-    text-shadow: none;
-}
-
-#custom-prev:hover, #custom-next:hover {
+    margin: 2px 1px;
     color: @fg-color;
-    background-color: alpha(@accent-purple, 0.35);
-    border-color: @accent-purple;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
 }
 
-#custom-playpause:hover {
-    background-color: alpha(@accent-purple, 0.85);
-    border-color: @accent-purple;
+#bluetooth:hover,
+#network:hover,
+#pulseaudio:hover,
+#backlight:hover,
+#battery:hover,
+#custom-notification:hover {
+    background: alpha(@accent-purple, 0.25);
+    color: @accent-purple;
 }
 
-/* Screen Recorder Waybar Module */
-#custom-recorder.inactive {
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
+#battery.charging,
+#battery.plugged {
+    color: @accent-green;
 }
 
-#custom-recorder.recording {
-    background-color: #f38ba8;
-    color: #11111b;
-    border: 1.5px solid #f38ba8;
-    border-radius: 12px;
-    padding: 0px 10px;
-    margin: 5px 2px;
-    animation: blink-recorder 1.5s infinite alternate;
+#battery.critical:not(.charging) {
+    color: @accent-red;
 }
 
-@keyframes blink-recorder {
-    0% {
-        background-color: #f38ba8;
-        color: #11111b;
-    }
-    100% {
-        background-color: alpha(#f38ba8, 0.4);
-        color: #f38ba8;
-    }
+#clock {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 10px;
+    margin-left: 4px;
+    color: @fg-color;
+    border-radius: 5px;
+    transition: all 0.12s ease-in-out;
+}
+
+#clock:hover {
+    background: alpha(@accent-purple, 0.25);
+    color: @accent-purple;
+}
+
+/* Tooltips */
+tooltip {
+    background-color: @bg-color;
+    border: 1px solid @border-color;
+    border-radius: 10px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+tooltip label {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Adwaita Sans", sans-serif;
+    color: @fg-color;
+    font-size: 12.5px;
+}
+
+/* Native GTK Dropdown Menus */
+menu {
+    background: alpha(@bg-color, 0.96);
+    border: 1px solid alpha(@border-color, 0.45);
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+menuitem {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Adwaita Sans", sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 5px 14px;
+    margin: 1px 0;
+    border-radius: 5px;
+    color: @fg-color;
+    transition: all 0.1s ease;
+}
+
+menuitem:hover {
+    background-color: @accent-purple;
+    color: #ffffff;
+}
+
+separator {
+    background-color: alpha(@border-color, 0.3);
+    margin: 4px 0;
 }
